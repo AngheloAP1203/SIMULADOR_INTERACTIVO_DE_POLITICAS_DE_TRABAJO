@@ -15,60 +15,10 @@ API REST (FastAPI) con un **simulador What-If** web y explicaciones **SHAP** por
 | Archivo | Descripción |
 |---|---|
 | `burnout_model.pkl` | Modelo LightGBM entrenado + `StandardScaler` + `LabelEncoder` + orden de variables |
-| `api_burnout.py` | API REST con FastAPI: `POST /predict` (predicción + BRS + explicación SHAP) |
-| `static/index.html` | Frontend del simulador What-If (sliders interactivos) |
+| `api_burnout.py` | API REST con FastAPI: `POST /predict` (predicción + BRS + explicación SHAP) y `POST /optimize` (recomendador de políticas de bienestar) |
+| `static/index.html` | Frontend tipo dashboard: simulador What-If con gráficas interactivas, comparador de escenarios y recomendaciones |
 | `requirements.txt` | Dependencias de Python |
-| `render.yaml` | Configuración de despliegue automático en Render.com |
-
-## 🚀 Ejecutar en local
-
-```bash
-pip install -r requirements.txt
-uvicorn api_burnout:app --reload
-```
-
-Abrir <http://127.0.0.1:8000> → simulador web.
-Documentación interactiva de la API en <http://127.0.0.1:8000/docs>.
-
-## 🌐 Desplegar gratis en Render.com
-
-1. Crear cuenta gratuita en <https://render.com> (no pide tarjeta).
-2. **New → Web Service** → conectar este repositorio de GitHub.
-3. Render detecta `render.yaml` automáticamente. Si lo pide manualmente:
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `uvicorn api_burnout:app --host 0.0.0.0 --port $PORT`
-4. **Deploy** → obtendrás una URL pública tipo `https://simulador-burnout.onrender.com`.
-
-> ⚠️ En el plan gratuito, el servicio "duerme" tras 15 min sin uso; la primera
-> petición después puede tardar ~1 min en despertar.
-
-## 🔌 Uso de la API
-
-```bash
-curl -X POST https://TU-URL.onrender.com/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "age": 30, "experience_years": 5, "daily_work_hours": 11,
-    "sleep_hours": 4.5, "caffeine_intake": 5, "bugs_per_day": 8,
-    "commits_per_day": 12, "meetings_per_day": 8, "screen_time": 13,
-    "exercise_hours": 0.1, "stress_level": 85
-  }'
-```
-
-Respuesta:
-
-```json
-{
-  "burnout_predicho": "High",
-  "burnout_risk_score": 99.3,
-  "probabilidades": {"High": 99.3, "Low": 0.1, "Medium": 0.7},
-  "explicacion_shap_top3": [
-    {"variable": "stress_level", "contribucion": 4.1146},
-    {"variable": "work_life_ratio", "contribucion": 0.2103},
-    {"variable": "meeting_fatigue", "contribucion": 0.2043}
-  ]
-}
-```
+| `render.yaml` | Configuración del servicio web |
 
 ## 🤖 Sobre el modelo
 
@@ -79,5 +29,9 @@ Respuesta:
 - **Hiperparámetros:** optimizados con `RandomizedSearchCV` (validación cruzada estratificada k=5)
 - **Interpretabilidad:** SHAP (TreeExplainer) integrado en el endpoint
 
-El notebook completo con el pipeline (EDA, limpieza, comparación de 5 modelos,
-entrenamiento, evaluación, SHAP/LIME y despliegue) se encuentra en Kaggle.
+## ⚖️ Uso responsable
+
+Las predicciones de este sistema están orientadas a la **prevención y el bienestar**
+del equipo. No deben usarse para sancionar, despedir ni discriminar a ninguna persona.
+El modelo fue entrenado con datos sintéticos y sus resultados deben validarse con
+datos reales antes de cualquier uso en producción.
