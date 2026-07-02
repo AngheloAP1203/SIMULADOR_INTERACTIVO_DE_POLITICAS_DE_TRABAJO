@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador Interactivo de Políticas de Trabajo — Predicción de Burnout</title>
+<style>
+  :root{
+    --bg:#0f172a; --card:#1e293b; --card2:#273549; --text:#e2e8f0; --muted:#94a3b8;
+    --low:#27AE60; --med:#F39C12; --high:#E74C3C; --accent:#3b82f6;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; font-family:'Segoe UI',system-ui,sans-serif}
+  body{background:var(--bg); color:var(--text); min-height:100vh; padding:24px}
+  .wrap{max-width:1100px; margin:0 auto}
+  header{text-align:center; margin-bottom:28px}
+  header h1{font-size:1.6rem; margin-bottom:6px}
+  header p{color:var(--muted); font-size:.95rem}
+  .grid{display:grid; grid-template-columns:1.2fr .8fr; gap:20px}
+  @media(max-width:840px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card); border-radius:14px; padding:22px}
+  .card h2{font-size:1.05rem; margin-bottom:16px; color:#cbd5e1}
+  .slider-row{margin-bottom:14px}
+  .slider-row label{display:flex; justify-content:space-between; font-size:.86rem; color:var(--muted); margin-bottom:4px}
+  .slider-row label b{color:var(--text)}
+  input[type=range]{width:100%; accent-color:var(--accent); cursor:pointer}
+  button{width:100%; padding:14px; margin-top:10px; border:none; border-radius:10px;
+    background:var(--accent); color:#fff; font-size:1rem; font-weight:600; cursor:pointer; transition:.2s}
+  button:hover{filter:brightness(1.15)}
+  button:disabled{opacity:.5; cursor:wait}
+  .resultado{text-align:center}
+  .nivel{font-size:2.2rem; font-weight:800; margin:10px 0}
+  .nivel.Low{color:var(--low)} .nivel.Medium{color:var(--med)} .nivel.High{color:var(--high)}
+  .gauge{position:relative; height:26px; border-radius:13px; overflow:hidden; margin:14px 0 6px;
+    background:linear-gradient(90deg,var(--low) 0 33%,var(--med) 33% 66%,var(--high) 66% 100%)}
+  .aguja{position:absolute; top:-4px; width:4px; height:34px; background:#fff; border-radius:2px;
+    box-shadow:0 0 6px rgba(0,0,0,.6); transition:left .6s ease}
+  .brs-label{color:var(--muted); font-size:.85rem}
+  .probas{margin-top:18px; text-align:left}
+  .proba-row{margin-bottom:10px}
+  .proba-row .tag{display:flex; justify-content:space-between; font-size:.85rem; margin-bottom:3px}
+  .barra{height:10px; border-radius:5px; background:var(--card2); overflow:hidden}
+  .barra i{display:block; height:100%; border-radius:5px; transition:width .6s ease}
+  .shap{margin-top:18px; text-align:left; font-size:.85rem}
+  .shap h3{font-size:.9rem; color:#cbd5e1; margin-bottom:8px}
+  .shap .item{display:flex; justify-content:space-between; padding:6px 10px; border-radius:8px;
+    background:var(--card2); margin-bottom:6px}
+  .shap .pos{color:var(--high)} .shap .neg{color:var(--low)}
+  footer{text-align:center; color:var(--muted); font-size:.8rem; margin-top:26px}
+  .placeholder{color:var(--muted); padding:36px 10px; font-size:.92rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🧠 Simulador Interactivo de Políticas de Trabajo</h1>
+    <p>Predicción del nivel de <b>burnout</b> de desarrolladores con Machine Learning (LightGBM + SHAP) · UPAO</p>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <h2>⚙️ Perfil del desarrollador (mueve los controles)</h2>
+      <div id="sliders"></div>
+      <button id="btn" onclick="predecir()">🔮 Predecir nivel de burnout</button>
+    </div>
+
+    <div class="card resultado">
+      <h2>📊 Resultado</h2>
+      <div id="out" class="placeholder">Ajusta el perfil y pulsa <b>Predecir</b>.<br><br>
+        El modelo analizará las 11 variables (más 4 derivadas) y devolverá el nivel de burnout,
+        el índice de riesgo continuo (BRS 0-100) y la explicación SHAP de la predicción.</div>
+    </div>
+  </div>
+
+  <footer>Proyecto de Machine Learning · Alcántara · Arenas · Brunelli · Cabrera · Campos · UPAO 2026-10<br>
+  API: <code>POST /predict</code> · Docs interactivas en <a href="/docs" style="color:var(--accent)">/docs</a></footer>
+</div>
+
+<script>
+const VARS = [
+  ["age","Edad (años)",20,44,30,1],
+  ["experience_years","Años de experiencia",0,19,5,1],
+  ["daily_work_hours","Horas de trabajo diario",4,16,9,0.5],
+  ["sleep_hours","Horas de sueño",3,10,6.5,0.5],
+  ["caffeine_intake","Cafés al día",0,10,3,1],
+  ["bugs_per_day","Bugs resueltos por día",0,20,8,1],
+  ["commits_per_day","Commits por día",0,29,10,1],
+  ["meetings_per_day","Reuniones por día",0,9,4,1],
+  ["screen_time","Horas frente a pantalla",5,19,11,0.5],
+  ["exercise_hours","Horas de ejercicio",0,2,0.5,0.1],
+  ["stress_level","Nivel de estrés (0-100)",0,100,55,1],
+];
+const COLORES = {Low:"var(--low)", Medium:"var(--med)", High:"var(--high)"};
+const NOMBRES = {
+  age:"Edad", experience_years:"Experiencia", daily_work_hours:"Horas de trabajo",
+  sleep_hours:"Horas de sueño", caffeine_intake:"Cafeína", bugs_per_day:"Bugs/día",
+  commits_per_day:"Commits/día", meetings_per_day:"Reuniones/día", screen_time:"Tiempo de pantalla",
+  exercise_hours:"Ejercicio", stress_level:"Nivel de estrés", work_life_ratio:"Ratio trabajo/descanso",
+  productivity_score:"Puntaje de productividad", meeting_fatigue:"Fatiga por reuniones",
+  recovery_index:"Índice de recuperación"
+};
+
+const cont = document.getElementById("sliders");
+VARS.forEach(([id,label,min,max,val,step])=>{
+  cont.insertAdjacentHTML("beforeend", `
+    <div class="slider-row">
+      <label><span>${label}</span><b id="v_${id}">${val}</b></label>
+      <input type="range" id="${id}" min="${min}" max="${max}" value="${val}" step="${step}"
+        oninput="document.getElementById('v_${id}').textContent=this.value">
+    </div>`);
+});
+
+async function predecir(){
+  const btn = document.getElementById("btn");
+  btn.disabled = true; btn.textContent = "⏳ Calculando...";
+  const body = {};
+  VARS.forEach(([id])=> body[id] = parseFloat(document.getElementById(id).value));
+  try{
+    const r = await fetch("/predict",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const d = await r.json();
+    render(d);
+  }catch(e){
+    document.getElementById("out").innerHTML = `<div class="placeholder">❌ Error al conectar con la API: ${e.message}</div>`;
+  }finally{
+    btn.disabled = false; btn.textContent = "🔮 Predecir nivel de burnout";
+  }
+}
+
+function render(d){
+  const brs = d.burnout_risk_score ?? 50;
+  let html = `
+    <div class="nivel ${d.burnout_predicho}">${
+      d.burnout_predicho==="Low"?"🟢 BAJO":d.burnout_predicho==="Medium"?"🟠 MEDIO":"🔴 ALTO"}</div>
+    <div class="gauge"><div class="aguja" style="left:calc(${brs}% - 2px)"></div></div>
+    <div class="brs-label">Burnout Risk Score: <b>${brs}</b> / 100</div>
+    <div class="probas">`;
+  for(const [clase,p] of Object.entries(d.probabilidades)){
+    html += `
+      <div class="proba-row">
+        <div class="tag"><span>${clase}</span><span>${p}%</span></div>
+        <div class="barra"><i style="width:${p}%;background:${COLORES[clase]}"></i></div>
+      </div>`;
+  }
+  html += `</div>`;
+  if(d.explicacion_shap_top3){
+    html += `<div class="shap"><h3>🔍 ¿Por qué? (explicación SHAP — top 3 factores)</h3>`;
+    d.explicacion_shap_top3.forEach(x=>{
+      const signo = x.contribucion >= 0 ? "pos" : "neg";
+      const flecha = x.contribucion >= 0 ? "▲ aumenta" : "▼ reduce";
+      html += `<div class="item"><span>${NOMBRES[x.variable]||x.variable}</span>
+        <span class="${signo}">${flecha} (${x.contribucion.toFixed(3)})</span></div>`;
+    });
+    html += `</div>`;
+  }
+  document.getElementById("out").innerHTML = html;
+}
+</script>
+</body>
+</html>
