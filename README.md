@@ -15,8 +15,9 @@ API REST (FastAPI) con un **simulador What-If** web y explicaciones **SHAP** por
 | Archivo | Descripción |
 |---|---|
 | `burnout_model.pkl` | Modelo LightGBM entrenado + `StandardScaler` + `LabelEncoder` + orden de variables |
-| `api_burnout.py` | API REST con FastAPI: `POST /predict` (predicción + BRS + explicación SHAP) y `POST /optimize` (recomendador de políticas de bienestar) |
-| `static/index.html` | Frontend tipo dashboard: simulador What-If con gráficas interactivas, comparador de escenarios y recomendaciones |
+| `api_burnout.py` | API REST con FastAPI: `POST /predict`, `POST /predict/batch`, `POST /optimize`, `POST /sensitivity`, `GET /model/info`, `GET /model/importance` |
+| `static/index.html` | Frontend tipo dashboard: simulador What-If, comparador de escenarios, recomendaciones, comparación poblacional, sensibilidad, predicción por lotes y ficha técnica del modelo |
+| `df_burnout_procesado.csv` | Dataset real usado en el entrenamiento (7,000 registros), usado para percentiles y rangos de sensibilidad |
 | `requirements.txt` | Dependencias de Python |
 | `render.yaml` | Configuración del servicio web |
 

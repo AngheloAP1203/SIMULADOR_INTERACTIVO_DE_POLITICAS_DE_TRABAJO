@@ -7,22 +7,25 @@ Modelo: LightGBM (clasificacion multiclase Low/Medium/High) + explicacion SHAP.
 Ejecutar en local:   uvicorn api_burnout:app --reload
 En produccion:       uvicorn api_burnout:app --host 0.0.0.0 --port $PORT
 """
+import io
 import os
 import pickle
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from scipy.stats import percentileofscore
 
 # ---------------------------------------------------------------------------
 # Carga de artefactos (modelo + scaler + label encoder + orden de variables)
 # ---------------------------------------------------------------------------
 RUTA_BASE = os.path.dirname(os.path.abspath(__file__))
+RUTA_MODELO = os.path.join(RUTA_BASE, "burnout_model.pkl")
 
-with open(os.path.join(RUTA_BASE, "burnout_model.pkl"), "rb") as f:
+with open(RUTA_MODELO, "rb") as f:
     artefactos = pickle.load(f)
 
 modelo        = artefactos["model"]
@@ -38,6 +41,34 @@ try:
 except Exception:
     explainer = None
     HAY_SHAP = False
+
+# Dataset REAL usado en el entrenamiento (7,000 registros). Se usa para calcular
+# percentiles poblacionales y rangos reales del analisis de sensibilidad.
+# Carga protegida: si el CSV no esta presente en el entorno de despliegue, esas
+# dos funcionalidades se desactivan con gracia (el resto de la API sigue igual).
+RUTA_DATASET = os.path.join(RUTA_BASE, "df_burnout_procesado.csv")
+try:
+    df_entrenamiento = pd.read_csv(RUTA_DATASET)
+    HAY_DATASET = True
+except Exception:
+    df_entrenamiento = None
+    HAY_DATASET = False
+
+VARIABLES_ORIGINALES = [
+    "age", "experience_years", "daily_work_hours", "sleep_hours", "caffeine_intake",
+    "bugs_per_day", "commits_per_day", "meetings_per_day", "screen_time",
+    "exercise_hours", "stress_level",
+]
+
+# Metricas REALES obtenidas en el notebook sobre el conjunto de prueba (15% held-out,
+# 1,050 registros nunca vistos durante el entrenamiento). No se recalculan aqui.
+METRICAS_TEST = {
+    "accuracy": 0.9819,
+    "f1_macro": 0.9821,
+    "auc_roc_ovr_macro": 0.9953,
+    "log_loss": 0.0686,
+    "n_test": 1050,
+}
 
 # Severidad por clase para el Burnout Risk Score (BRS 0-100)
 SEVERIDAD = {"Low": 0.0, "Medium": 0.5, "High": 1.0}
@@ -58,7 +89,7 @@ PALANCAS = {
 app = FastAPI(
     title="API Simulador de Burnout",
     description="Prediccion del nivel de burnout de desarrolladores con LightGBM + SHAP",
-    version="2.0",
+    version="3.0",
 )
 
 # CORS abierto para que el frontend (mismo dominio u otro) pueda consumir la API
@@ -111,6 +142,21 @@ def _brs_de_perfil(perfil: dict) -> float:
     return _predecir_interno(perfil)[3]
 
 
+def _percentiles(perfil: dict) -> dict | None:
+    """
+    Compara cada variable del perfil contra los 7,000 registros REALES usados en el
+    entrenamiento (df_entrenamiento). Devuelve, por variable, el percentil real que
+    ocupa el valor ingresado dentro de esa poblacion (0-100).
+    """
+    if not HAY_DATASET:
+        return None
+    resultado = {}
+    for var in VARIABLES_ORIGINALES:
+        pct = percentileofscore(df_entrenamiento[var], perfil[var], kind="mean")
+        resultado[var] = round(float(pct), 1)
+    return resultado
+
+
 @app.post("/predict")
 def predecir(perfil: PerfilDesarrollador):
     datos = perfil.dict()
@@ -128,6 +174,7 @@ def predecir(perfil: PerfilDesarrollador):
             for c, p in zip(label_encoder.classes_, proba)
         },
         "features_derivadas": derivadas,
+        "comparacion_poblacional": _percentiles(datos),
     }
 
     if HAY_SHAP:
@@ -140,6 +187,111 @@ def predecir(perfil: PerfilDesarrollador):
         respuesta["explicacion_shap_top3"] = respuesta["explicacion_shap"][:3]
 
     return respuesta
+
+
+@app.post("/predict/batch")
+async def predecir_lote(archivo: UploadFile = File(...)):
+    """
+    Prediccion por lotes: recibe un CSV con las 11 columnas de PerfilDesarrollador
+    (una fila por desarrollador) y aplica el MISMO pipeline ya entrenado a cada fila.
+    """
+    contenido = await archivo.read()
+    df_lote = pd.read_csv(io.BytesIO(contenido))
+
+    faltantes = [c for c in VARIABLES_ORIGINALES if c not in df_lote.columns]
+    if faltantes:
+        return {"error": f"Faltan columnas requeridas: {faltantes}", "columnas_esperadas": VARIABLES_ORIGINALES}
+
+    resultados = []
+    for i, fila in df_lote.iterrows():
+        perfil = {c: float(fila[c]) for c in VARIABLES_ORIGINALES}
+        _, clase, proba, brs, _ = _predecir_interno(perfil)
+        resultados.append({
+            "fila": int(i) + 1,
+            "burnout_predicho": clase,
+            "burnout_risk_score": round(brs, 1),
+            "probabilidades": {c: round(float(p) * 100, 1) for c, p in zip(label_encoder.classes_, proba)},
+        })
+
+    conteo = {c: sum(1 for r in resultados if r["burnout_predicho"] == c) for c in label_encoder.classes_}
+    brs_promedio = round(float(np.mean([r["burnout_risk_score"] for r in resultados])), 1)
+
+    return {
+        "total_registros": len(resultados),
+        "resumen": {
+            "conteo_por_clase": conteo,
+            "brs_promedio_equipo": brs_promedio,
+            "en_riesgo_alto": sum(1 for r in resultados if r["burnout_risk_score"] >= 66),
+        },
+        "resultados": resultados,
+    }
+
+
+@app.get("/model/info")
+def info_modelo():
+    """Ficha tecnica real del modelo ya entrenado (parametros y metricas reales)."""
+    return {
+        "algoritmo": type(modelo).__name__,
+        "clases": list(label_encoder.classes_),
+        "n_variables": len(feature_cols),
+        "variables": feature_cols,
+        "arboles_usados": int(getattr(modelo, "best_iteration_", modelo.get_params().get("n_estimators"))),
+        "hiperparametros": {
+            k: v for k, v in modelo.get_params().items()
+            if k in ("n_estimators", "learning_rate", "max_depth", "num_leaves",
+                      "min_child_samples", "subsample", "colsample_bytree",
+                      "reg_alpha", "reg_lambda", "class_weight", "objective")
+        },
+        "tamano_pkl_kb": round(os.path.getsize(RUTA_MODELO) / 1024, 1),
+        "metricas_test": METRICAS_TEST,
+        "shap_disponible": HAY_SHAP,
+        "dataset_referencia_disponible": HAY_DATASET,
+    }
+
+
+@app.get("/model/importance")
+def importancia_modelo():
+    """Importancia de variables NATIVA de LightGBM (feature_importances_, ya calculada en el entrenamiento)."""
+    pares = sorted(
+        zip(feature_cols, modelo.feature_importances_.tolist()),
+        key=lambda kv: kv[1], reverse=True,
+    )
+    return {"tipo": "split (numero de veces que la variable se usa para dividir un arbol)",
+            "importancias": [{"variable": v, "importancia": int(i)} for v, i in pares]}
+
+
+@app.post("/sensitivity")
+def analisis_sensibilidad(
+    perfil: PerfilDesarrollador,
+    variable: str = Query(..., description="Variable a barrer, una de: " + ", ".join(VARIABLES_ORIGINALES)),
+    n_puntos: int = Query(20, ge=5, le=50),
+):
+    """
+    Curva de dependencia parcial simplificada: recorre 'variable' entre su minimo y
+    maximo REAL (segun el dataset de entrenamiento) manteniendo el resto del perfil
+    fijo, y llama al modelo YA entrenado en cada punto.
+    """
+    if variable not in VARIABLES_ORIGINALES:
+        return {"error": f"Variable invalida. Debe ser una de: {VARIABLES_ORIGINALES}"}
+
+    if HAY_DATASET:
+        v_min = float(df_entrenamiento[variable].min())
+        v_max = float(df_entrenamiento[variable].max())
+    else:
+        # Respaldo: usa el rango +/-50% del valor actual si no hay dataset de referencia
+        actual = perfil.dict()[variable]
+        v_min, v_max = actual * 0.5, actual * 1.5
+
+    base = perfil.dict()
+    puntos = np.linspace(v_min, v_max, n_puntos)
+    curva = []
+    for valor in puntos:
+        cand = dict(base)
+        cand[variable] = float(valor)
+        _, clase, _, brs, _ = _predecir_interno(cand)
+        curva.append({"valor": round(float(valor), 2), "burnout_risk_score": round(brs, 1), "clase_predicha": clase})
+
+    return {"variable": variable, "rango_real_dataset": [round(v_min, 2), round(v_max, 2)], "curva": curva}
 
 
 @app.post("/optimize")
@@ -208,7 +360,7 @@ def optimizar(
 
 @app.get("/health")
 def salud():
-    return {"status": "ok", "shap_disponible": HAY_SHAP}
+    return {"status": "ok", "shap_disponible": HAY_SHAP, "dataset_referencia_disponible": HAY_DATASET}
 
 
 @app.get("/")

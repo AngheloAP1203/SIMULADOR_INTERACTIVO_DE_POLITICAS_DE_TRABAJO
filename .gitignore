@@ -4,4 +4,3 @@ __pycache__/
 venv/
 .env
 .DS_Store
-df_burnout_procesado.csv

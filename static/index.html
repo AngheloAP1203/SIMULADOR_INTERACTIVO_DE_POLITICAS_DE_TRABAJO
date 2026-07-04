@@ -133,6 +133,48 @@
   footer{text-align:center; color:var(--muted); font-size:.8rem; margin-top:28px; line-height:1.7}
   footer a{color:var(--accent)}
   .hidden{display:none}
+
+  /* ---------- percentiles poblacionales ---------- */
+  .percentiles{margin-top:18px; text-align:left}
+  .percentiles h3{font-size:.82rem; color:#cdd6ee; margin-bottom:10px; font-weight:700}
+  .pct-row{margin-bottom:8px}
+  .pct-row .tag{display:flex; justify-content:space-between; font-size:.78rem; color:var(--muted); margin-bottom:3px}
+  .pct-row .tag b{color:var(--text)}
+  .pct-track{height:8px; border-radius:4px; background:rgba(255,255,255,.07); overflow:hidden}
+  .pct-fill{display:block; height:100%; border-radius:4px; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .6s ease}
+
+  /* ---------- ficha tecnica del modelo ---------- */
+  .info-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-bottom:16px}
+  .info-chip{background:rgba(255,255,255,.05); border:1px solid var(--glass-border); border-radius:12px; padding:12px; text-align:center}
+  .info-chip .v{font-size:1.2rem; font-weight:800; font-variant-numeric:tabular-nums; color:var(--accent)}
+  .info-chip .k{font-size:.7rem; color:var(--muted); margin-top:3px}
+  .hp-list{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px}
+  .hp-pill{background:rgba(108,140,255,.1); border:1px solid rgba(108,140,255,.25); border-radius:8px; padding:5px 10px; font-size:.76rem; color:#cdd6ee}
+  .hp-pill b{color:#fff}
+
+  /* ---------- sensibilidad ---------- */
+  .sens-controls{display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap}
+  select{
+    flex:1; min-width:180px; padding:11px 12px; border-radius:10px; border:1px solid var(--glass-border);
+    background:rgba(255,255,255,.05); color:var(--text); font-size:.88rem;
+  }
+  select option{background:#131a34}
+
+  /* ---------- lote CSV ---------- */
+  .drop{
+    border:1.5px dashed var(--glass-border); border-radius:12px; padding:20px; text-align:center;
+    color:var(--muted); font-size:.85rem; margin-bottom:12px; cursor:pointer; transition:.2s;
+  }
+  .drop:hover{border-color:var(--accent); color:var(--text)}
+  .tabla-scroll{overflow-x:auto; margin-top:14px}
+  table.lote{width:100%; border-collapse:collapse; font-size:.82rem}
+  table.lote th{text-align:left; color:var(--muted); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--glass-border)}
+  table.lote td{padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.04)}
+  table.lote tr:hover td{background:rgba(255,255,255,.03)}
+  .badge-mini{padding:3px 10px; border-radius:999px; font-size:.72rem; font-weight:700}
+  .badge-mini.Low{background:rgba(46,204,113,.15); color:var(--low)}
+  .badge-mini.Medium{background:rgba(245,166,35,.15); color:var(--med)}
+  .badge-mini.High{background:rgba(255,92,92,.15); color:var(--high)}
 </style>
 </head>
 <body>
@@ -206,9 +248,56 @@
     <div class="chart-box tall"><canvas id="chartShap"></canvas></div>
   </div>
 
+  <!-- Historial de la sesión -->
+  <div class="card hidden" id="cardHistorial" style="margin-bottom:20px">
+    <h2>📈 Historial de predicciones de la sesión</h2>
+    <p style="color:var(--muted); font-size:.82rem; margin-bottom:12px">
+      Cada vez que predices, se agrega un punto aquí — útil para comparar varios perfiles seguidos en vivo.
+    </p>
+    <div class="chart-box"><canvas id="chartHistorial"></canvas></div>
+  </div>
+
+  <!-- Ficha técnica del modelo -->
+  <div class="card" style="margin-bottom:20px" id="cardModelo">
+    <h2>🧾 Ficha técnica del modelo (datos reales del entrenamiento)</h2>
+    <div id="modeloInfo" class="placeholder">Cargando información del modelo…</div>
+  </div>
+
+  <!-- Análisis de sensibilidad -->
+  <div class="card" style="margin-bottom:20px">
+    <h2>🎚️ Análisis de sensibilidad (curva de dependencia parcial)</h2>
+    <p style="color:var(--muted); font-size:.82rem; margin-bottom:12px">
+      Recorre una sola variable dentro de su rango real (según los 7,000 registros de entrenamiento),
+      manteniendo el resto del perfil fijo, y muestra cómo reacciona el modelo ya entrenado.
+    </p>
+    <div class="sens-controls">
+      <select id="sensVar"></select>
+      <button class="btn primary" style="flex:0 0 auto; min-width:160px" onclick="analizarSensibilidad()" id="btnSens">📉 Analizar variable</button>
+    </div>
+    <div class="chart-box hidden" id="sensChartBox"><canvas id="chartSens"></canvas></div>
+  </div>
+
+  <!-- Predicción por lotes -->
+  <div class="card" style="margin-bottom:20px">
+    <h2>📁 Predicción por lotes (equipo completo vía CSV)</h2>
+    <p style="color:var(--muted); font-size:.82rem; margin-bottom:12px">
+      Sube un CSV con las 11 columnas del perfil (una fila por desarrollador) y el mismo modelo entrenado
+      predice a todo el equipo de una vez.
+    </p>
+    <div class="drop" onclick="document.getElementById('fileLote').click()">
+      📎 Clic aquí para seleccionar un archivo CSV (o usa el botón de ejemplo)
+    </div>
+    <input type="file" id="fileLote" accept=".csv" class="hidden" onchange="predecirLote()">
+    <div class="btns">
+      <button class="btn ghost" onclick="descargarEjemploCSV()">⬇️ Descargar CSV de ejemplo</button>
+    </div>
+    <div id="loteResultado"></div>
+  </div>
+
   <footer>
     Proyecto de Machine Learning · Alcántara · Arenas · Brunelli · Cabrera · Campos · UPAO 2026-10<br>
-    API REST: <code>POST /predict</code> · <code>POST /optimize</code> · Documentación interactiva en <a href="/docs">/docs</a>
+    API REST: <code>POST /predict</code> · <code>POST /optimize</code> · <code>POST /predict/batch</code> ·
+    <code>POST /sensitivity</code> · <code>GET /model/info</code> · Documentación interactiva en <a href="/docs">/docs</a>
   </footer>
 </div>
 
@@ -241,8 +330,9 @@ const PRESETS = {
 };
 const REF_SALUDABLE = PRESETS.saludable;
 const COLOR_CLASE = {Low:"#2ecc71", Medium:"#f5a623", High:"#ff5c5c"};
-let chartRadar=null, chartDona=null, chartShap=null;
+let chartRadar=null, chartDona=null, chartShap=null, chartHistorial=null, chartSens=null;
 let escenarioA=null, ultimoResultado=null;
+let historialSesion=[];
 
 /* ============================== SLIDERS ============================== */
 const cont = document.getElementById("sliders");
@@ -280,6 +370,7 @@ async function predecir(){
     renderResultado(d);
     renderCharts(perfil, d);
     if(escenarioA) renderComparador();
+    registrarHistorial(d);
   }catch(e){
     document.getElementById("resultado").innerHTML=
       `<div class="placeholder">❌ Error al conectar con la API: ${e.message}<br>
@@ -327,7 +418,47 @@ function renderResultado(d){
     }
     html+=`</div>`;
   }
+  if(d.comparacion_poblacional){
+    html+=`<div class="percentiles"><h3>📌 Comparación vs 7,000 desarrolladores reales del dataset de entrenamiento</h3>`;
+    const orden=[...Object.entries(d.comparacion_poblacional)].sort((a,b)=>b[1]-a[1]).slice(0,6);
+    orden.forEach(([k,pct])=>{
+      html+=`
+        <div class="pct-row">
+          <div class="tag"><span>${NOMBRES[k]||k}</span><b>Percentil ${pct}</b></div>
+          <div class="pct-track"><i class="pct-fill" style="width:${pct}%"></i></div>
+        </div>`;
+    });
+    html+=`<p style="color:var(--muted); font-size:.72rem; margin-top:8px">
+      Percentil 90 en \`stress_level\` = tu valor supera al 90% de los 7,000 desarrolladores reales usados para entrenar el modelo.</p></div>`;
+  }
   document.getElementById("resultado").innerHTML=html;
+}
+
+/* ============================== HISTORIAL DE SESIÓN ============================== */
+function registrarHistorial(d){
+  historialSesion.push({n:historialSesion.length+1, brs:d.burnout_risk_score, clase:d.burnout_predicho});
+  if(historialSesion.length<2) return; // esperar al menos 2 puntos para que la linea tenga sentido
+  document.getElementById("cardHistorial").classList.remove("hidden");
+  const labels=historialSesion.map(h=>"#"+h.n);
+  const datos=historialSesion.map(h=>h.brs);
+  const colores=historialSesion.map(h=>COLOR_CLASE[h.clase]);
+  if(chartHistorial){
+    chartHistorial.data.labels=labels;
+    chartHistorial.data.datasets[0].data=datos;
+    chartHistorial.data.datasets[0].pointBackgroundColor=colores;
+    chartHistorial.update();
+  }else{
+    chartHistorial=new Chart(document.getElementById("chartHistorial"),{
+      type:"line",
+      data:{labels, datasets:[{label:"Burnout Risk Score", data:datos, borderColor:"#6c8cff",
+        backgroundColor:"rgba(108,140,255,.12)", pointBackgroundColor:colores, pointRadius:6,
+        pointHoverRadius:8, tension:.3, fill:true}]},
+      options:{responsive:true, maintainAspectRatio:false,
+        scales:{y:{min:0,max:100, grid:{color:"rgba(255,255,255,.07)"}, ticks:{color:"#9aa5c0"}},
+                x:{grid:{display:false}, ticks:{color:"#9aa5c0"}}},
+        plugins:{legend:{display:false}}}
+    });
+  }
 }
 
 /* ============================== GRÁFICAS ============================== */
@@ -486,6 +617,137 @@ function renderOptimizador(d){
   }
   document.getElementById("optimizador").innerHTML=html;
 }
+
+/* ============================== FICHA TÉCNICA DEL MODELO ============================== */
+async function cargarFichaModelo(){
+  try{
+    const [info, imp] = await Promise.all([
+      fetch("/model/info").then(r=>r.json()),
+      fetch("/model/importance").then(r=>r.json()),
+    ]);
+    const m=info.metricas_test;
+    let html=`
+      <div class="info-grid">
+        <div class="info-chip"><div class="v">${info.algoritmo}</div><div class="k">Algoritmo</div></div>
+        <div class="info-chip"><div class="v">${info.arboles_usados}</div><div class="k">Árboles usados (early stopping)</div></div>
+        <div class="info-chip"><div class="v">${info.n_variables}</div><div class="k">Variables (11 + 4 derivadas)</div></div>
+        <div class="info-chip"><div class="v">${info.tamano_pkl_kb} KB</div><div class="k">Tamaño del modelo</div></div>
+      </div>
+      <div class="info-grid">
+        <div class="info-chip"><div class="v" style="color:var(--low)">${(m.accuracy*100).toFixed(2)}%</div><div class="k">Accuracy (test)</div></div>
+        <div class="info-chip"><div class="v" style="color:var(--low)">${m.f1_macro.toFixed(3)}</div><div class="k">F1-macro (test)</div></div>
+        <div class="info-chip"><div class="v" style="color:var(--low)">${m.auc_roc_ovr_macro.toFixed(4)}</div><div class="k">AUC-ROC OvR</div></div>
+        <div class="info-chip"><div class="v" style="color:var(--low)">${m.log_loss.toFixed(3)}</div><div class="k">Log Loss</div></div>
+      </div>
+      <p style="font-size:.8rem; color:var(--muted); margin-bottom:6px">Hiperparámetros reales (RandomizedSearchCV + validación cruzada k=5):</p>
+      <div class="hp-list">${Object.entries(info.hiperparametros).map(([k,v])=>`<span class="hp-pill">${k}=<b>${v}</b></span>`).join("")}</div>
+      <p style="font-size:.8rem; color:var(--muted); margin:16px 0 8px">Importancia nativa de LightGBM (<code>feature_importances_</code>, distinta de SHAP):</p>
+      <div class="chart-box"><canvas id="chartImportancia"></canvas></div>`;
+    document.getElementById("modeloInfo").innerHTML=html;
+
+    const top=imp.importancias.slice(0,10);
+    new Chart(document.getElementById("chartImportancia"),{
+      type:"bar",
+      data:{labels:top.map(x=>NOMBRES[x.variable]||x.variable),
+        datasets:[{data:top.map(x=>x.importancia), backgroundColor:"rgba(155,108,255,.75)", borderRadius:5}]},
+      options:{indexAxis:"y", responsive:true, maintainAspectRatio:false,
+        scales:{x:{grid:{color:"rgba(255,255,255,.07)"}, ticks:{color:"#9aa5c0"}},
+                y:{grid:{display:false}, ticks:{color:"#cdd6ee", font:{size:11}}}},
+        plugins:{legend:{display:false}}}
+    });
+  }catch(e){
+    document.getElementById("modeloInfo").innerHTML=`<div class="placeholder">❌ No se pudo cargar la ficha del modelo: ${e.message}</div>`;
+  }
+}
+
+/* ============================== ANÁLISIS DE SENSIBILIDAD ============================== */
+const selSens=document.getElementById("sensVar");
+VARS.forEach(([id,label])=> selSens.insertAdjacentHTML("beforeend", `<option value="${id}">${label}</option>`));
+selSens.value="stress_level";
+
+async function analizarSensibilidad(){
+  const btn=document.getElementById("btnSens");
+  btn.disabled=true; btn.textContent="⏳ Calculando...";
+  try{
+    const perfil=leerPerfil();
+    const variable=selSens.value;
+    const r=await fetch(`/sensitivity?variable=${variable}&n_puntos=20`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(perfil)});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const d=await r.json();
+    document.getElementById("sensChartBox").classList.remove("hidden");
+    const labels=d.curva.map(p=>p.valor);
+    const datos=d.curva.map(p=>p.burnout_risk_score);
+    const colores=d.curva.map(p=>COLOR_CLASE[p.clase_predicha]);
+    if(chartSens){
+      chartSens.data.labels=labels; chartSens.data.datasets[0].data=datos;
+      chartSens.data.datasets[0].pointBackgroundColor=colores; chartSens.update();
+    }else{
+      chartSens=new Chart(document.getElementById("chartSens"),{
+        type:"line",
+        data:{labels, datasets:[{label:"BRS proyectado", data:datos, borderColor:"#f5a623",
+          backgroundColor:"rgba(245,166,35,.12)", pointBackgroundColor:colores, pointRadius:4, tension:.25, fill:true}]},
+        options:{responsive:true, maintainAspectRatio:false,
+          scales:{y:{min:0,max:100, title:{display:true,text:"Burnout Risk Score",color:"#9aa5c0"}, grid:{color:"rgba(255,255,255,.07)"}, ticks:{color:"#9aa5c0"}},
+                  x:{title:{display:true,text:NOMBRES[variable]||variable,color:"#9aa5c0"}, grid:{display:false}, ticks:{color:"#9aa5c0"}}},
+          plugins:{legend:{display:false},
+            tooltip:{callbacks:{label:(c)=>` BRS: ${c.parsed.y} (rango real: ${d.rango_real_dataset[0]}–${d.rango_real_dataset[1]})`}}}}
+      });
+    }
+  }catch(e){
+    document.getElementById("sensChartBox").classList.remove("hidden");
+    document.getElementById("sensChartBox").innerHTML=`<div class="placeholder">❌ Error: ${e.message}</div>`;
+  }finally{
+    btn.disabled=false; btn.textContent="📉 Analizar variable";
+  }
+}
+
+/* ============================== PREDICCIÓN POR LOTES ============================== */
+function descargarEjemploCSV(){
+  const filas=[VARS.map(([id])=>id).join(",")];
+  Object.values(PRESETS).forEach(p=> filas.push(VARS.map(([id])=>p[id]).join(",")));
+  const blob=new Blob([filas.join("\n")], {type:"text/csv"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="equipo_ejemplo.csv"; a.click();
+}
+
+async function predecirLote(){
+  const input=document.getElementById("fileLote");
+  if(!input.files.length) return;
+  const cont=document.getElementById("loteResultado");
+  cont.innerHTML=`<div class="placeholder">⏳ Procesando archivo con el modelo entrenado...</div>`;
+  try{
+    const fd=new FormData(); fd.append("archivo", input.files[0]);
+    const r=await fetch("/predict/batch",{method:"POST", body:fd});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const d=await r.json();
+    if(d.error){ cont.innerHTML=`<div class="placeholder">❌ ${d.error}<br><small>Columnas esperadas: ${d.columnas_esperadas.join(", ")}</small></div>`; return; }
+    let html=`
+      <div class="info-grid">
+        <div class="info-chip"><div class="v">${d.total_registros}</div><div class="k">Desarrolladores analizados</div></div>
+        <div class="info-chip"><div class="v" style="color:var(--high)">${d.resumen.en_riesgo_alto}</div><div class="k">En riesgo alto (BRS≥66)</div></div>
+        <div class="info-chip"><div class="v">${d.resumen.brs_promedio_equipo}</div><div class="k">BRS promedio del equipo</div></div>
+        <div class="info-chip"><div class="v">${Object.entries(d.resumen.conteo_por_clase).map(([c,n])=>n+" "+c).join(" · ")}</div><div class="k">Distribución</div></div>
+      </div>
+      <div class="tabla-scroll"><table class="lote">
+        <thead><tr><th>#</th><th>Burnout</th><th>BRS</th><th>Low%</th><th>Medium%</th><th>High%</th></tr></thead><tbody>`;
+    d.resultados.forEach(row=>{
+      const p=row.probabilidades;
+      html+=`<tr>
+        <td>${row.fila}</td>
+        <td><span class="badge-mini ${row.burnout_predicho}">${row.burnout_predicho}</span></td>
+        <td>${row.burnout_risk_score}</td>
+        <td>${p.Low ?? 0}%</td><td>${p.Medium ?? 0}%</td><td>${p.High ?? 0}%</td>
+      </tr>`;
+    });
+    html+=`</tbody></table></div>`;
+    cont.innerHTML=html;
+  }catch(e){
+    cont.innerHTML=`<div class="placeholder">❌ Error al procesar el archivo: ${e.message}</div>`;
+  }
+}
+
+/* ============================== INICIALIZACIÓN ============================== */
+cargarFichaModelo();
 </script>
 </body>
 </html>
