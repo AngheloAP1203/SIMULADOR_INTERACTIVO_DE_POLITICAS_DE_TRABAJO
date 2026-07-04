@@ -15,9 +15,15 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from scipy.stats import percentileofscore
+from sklearn.cluster import KMeans
+from sklearn.metrics import (
+    accuracy_score, auc, confusion_matrix, f1_score, precision_recall_fscore_support,
+    roc_auc_score, roc_curve,
+)
+from sklearn.preprocessing import StandardScaler, label_binarize
 
 # ---------------------------------------------------------------------------
 # Carga de artefactos (modelo + scaler + label encoder + orden de variables)
@@ -69,6 +75,32 @@ METRICAS_TEST = {
     "log_loss": 0.0686,
     "n_test": 1050,
 }
+
+# ---------------------------------------------------------------------------
+# Segmentacion no supervisada (K-Means), misma metodologia y variables del
+# notebook (Seccion 5.4), reentrenada aqui sobre el dataset real de referencia.
+# ---------------------------------------------------------------------------
+VARS_SEGMENTACION = ["daily_work_hours", "sleep_hours", "stress_level",
+                     "meetings_per_day", "exercise_hours", "screen_time"]
+try:
+    if not HAY_DATASET:
+        raise RuntimeError("dataset de referencia no disponible")
+    scaler_seg = StandardScaler().fit(df_entrenamiento[VARS_SEGMENTACION])
+    X_seg = scaler_seg.transform(df_entrenamiento[VARS_SEGMENTACION])
+    kmeans = KMeans(n_clusters=4, random_state=42, n_init=10).fit(X_seg)
+
+    # Etiquetas interpretables ordenadas por estres promedio (igual que el notebook)
+    perfil_seg = (
+        df_entrenamiento.assign(_seg=kmeans.labels_)
+        .groupby("_seg")[VARS_SEGMENTACION].mean()
+    )
+    orden_riesgo = perfil_seg["stress_level"].sort_values()
+    ETIQUETAS_SEGMENTO = ["Equilibrado / bajo riesgo", "Carga moderada", "Alta carga", "Sobrecargado / alto riesgo"]
+    NOMBRES_SEGMENTO = {seg: etq for etq, seg in zip(ETIQUETAS_SEGMENTO, orden_riesgo.index)}
+    HAY_KMEANS = True
+except Exception:
+    scaler_seg, kmeans, NOMBRES_SEGMENTO = None, None, {}
+    HAY_KMEANS = False
 
 # Severidad por clase para el Burnout Risk Score (BRS 0-100)
 SEVERIDAD = {"Low": 0.0, "Medium": 0.5, "High": 1.0}
@@ -142,6 +174,30 @@ def _brs_de_perfil(perfil: dict) -> float:
     return _predecir_interno(perfil)[3]
 
 
+def _construir_features_batch(df: pd.DataFrame) -> pd.DataFrame:
+    """Version vectorizada de _construir_features para procesar varias filas a la vez."""
+    d = df.copy()
+    d["work_life_ratio"]    = d["daily_work_hours"] / (d["sleep_hours"] + 1e-9)
+    d["productivity_score"] = d["commits_per_day"] * 0.6 + d["bugs_per_day"] * 0.4
+    d["meeting_fatigue"]    = d["meetings_per_day"] * d["daily_work_hours"]
+    d["recovery_index"]     = d["sleep_hours"] + d["exercise_hours"]
+    return d[feature_cols]
+
+
+def _segmento_de_perfil(perfil: dict) -> dict | None:
+    """
+    Asigna el perfil a uno de los 4 arquetipos de comportamiento laboral hallados
+    por K-Means (aprendizaje NO supervisado), complementario a la clasificacion
+    supervisada de LightGBM.
+    """
+    if not HAY_KMEANS:
+        return None
+    fila = pd.DataFrame([[perfil[v] for v in VARS_SEGMENTACION]], columns=VARS_SEGMENTACION)
+    fila_esc = scaler_seg.transform(fila)
+    seg_id = int(kmeans.predict(fila_esc)[0])
+    return {"segmento_id": seg_id, "segmento_nombre": NOMBRES_SEGMENTO[seg_id]}
+
+
 def _percentiles(perfil: dict) -> dict | None:
     """
     Compara cada variable del perfil contra los 7,000 registros REALES usados en el
@@ -175,6 +231,7 @@ def predecir(perfil: PerfilDesarrollador):
         },
         "features_derivadas": derivadas,
         "comparacion_poblacional": _percentiles(datos),
+        "segmento": _segmento_de_perfil(datos),
     }
 
     if HAY_SHAP:
@@ -193,7 +250,9 @@ def predecir(perfil: PerfilDesarrollador):
 async def predecir_lote(archivo: UploadFile = File(...)):
     """
     Prediccion por lotes: recibe un CSV con las 11 columnas de PerfilDesarrollador
-    (una fila por desarrollador) y aplica el MISMO pipeline ya entrenado a cada fila.
+    (una fila por desarrollador) y aplica el MISMO pipeline ya entrenado a todas las
+    filas de una vez (vectorizado), incluyendo la clasificacion supervisada (LightGBM)
+    y el segmento no supervisado (K-Means) de cada persona.
     """
     contenido = await archivo.read()
     df_lote = pd.read_csv(io.BytesIO(contenido))
@@ -202,28 +261,106 @@ async def predecir_lote(archivo: UploadFile = File(...)):
     if faltantes:
         return {"error": f"Faltan columnas requeridas: {faltantes}", "columnas_esperadas": VARIABLES_ORIGINALES}
 
-    resultados = []
-    for i, fila in df_lote.iterrows():
-        perfil = {c: float(fila[c]) for c in VARIABLES_ORIGINALES}
-        _, clase, proba, brs, _ = _predecir_interno(perfil)
-        resultados.append({
-            "fila": int(i) + 1,
-            "burnout_predicho": clase,
-            "burnout_risk_score": round(brs, 1),
-            "probabilidades": {c: round(float(p) * 100, 1) for c, p in zip(label_encoder.classes_, proba)},
-        })
+    df_feat = _construir_features_batch(df_lote[VARIABLES_ORIGINALES])
+    X_norm = pd.DataFrame(scaler.transform(df_feat), columns=feature_cols)
+    y_pred = modelo.predict(X_norm)
+    y_proba = modelo.predict_proba(X_norm)
+    brs = y_proba @ PESO_ORDEN * 100
 
-    conteo = {c: sum(1 for r in resultados if r["burnout_predicho"] == c) for c in label_encoder.classes_}
-    brs_promedio = round(float(np.mean([r["burnout_risk_score"] for r in resultados])), 1)
+    if HAY_KMEANS:
+        X_seg = scaler_seg.transform(df_lote[VARS_SEGMENTACION])
+        segmentos = kmeans.predict(X_seg)
+    else:
+        segmentos = [None] * len(df_lote)
+
+    resultados = []
+    for i in range(len(df_lote)):
+        clase = label_encoder.inverse_transform([int(y_pred[i])])[0]
+        fila_result = {
+            "fila": i + 1,
+            "burnout_predicho": clase,
+            "burnout_risk_score": round(float(brs[i]), 1),
+            "probabilidades": {c: round(float(p) * 100, 1) for c, p in zip(label_encoder.classes_, y_proba[i])},
+        }
+        if HAY_KMEANS:
+            fila_result["segmento"] = NOMBRES_SEGMENTO[int(segmentos[i])]
+        resultados.append(fila_result)
+
+    conteo = {c: int(sum(1 for r in resultados if r["burnout_predicho"] == c)) for c in label_encoder.classes_}
+    brs_promedio = round(float(np.mean(brs)), 1)
 
     return {
         "total_registros": len(resultados),
         "resumen": {
             "conteo_por_clase": conteo,
             "brs_promedio_equipo": brs_promedio,
-            "en_riesgo_alto": sum(1 for r in resultados if r["burnout_risk_score"] >= 66),
+            "en_riesgo_alto": int(sum(1 for r in resultados if r["burnout_risk_score"] >= 66)),
         },
         "resultados": resultados,
+    }
+
+
+@app.post("/evaluate")
+async def evaluar_modelo(archivo: UploadFile = File(...)):
+    """
+    Evaluacion supervisada del modelo YA entrenado contra datos reales etiquetados.
+    El CSV debe incluir las 11 columnas del perfil MAS la columna 'burnout_level'
+    con la clase real (Low/Medium/High). Calcula, con sklearn, las mismas metricas
+    usadas en el notebook: accuracy, F1-macro, AUC-ROC, matriz de confusion, reporte
+    por clase y curvas ROC (todo sobre datos que el modelo nunca vio en el entrenamiento).
+    """
+    contenido = await archivo.read()
+    df_eval = pd.read_csv(io.BytesIO(contenido))
+
+    requeridas = VARIABLES_ORIGINALES + ["burnout_level"]
+    faltantes = [c for c in requeridas if c not in df_eval.columns]
+    if faltantes:
+        return {"error": f"Faltan columnas requeridas: {faltantes}", "columnas_esperadas": requeridas}
+
+    clases_validas = set(label_encoder.classes_)
+    invalidas = sorted(set(df_eval["burnout_level"].unique()) - clases_validas)
+    if invalidas:
+        return {"error": f"Valores de burnout_level no reconocidos: {invalidas}. "
+                          f"Deben ser exactamente: {sorted(clases_validas)}"}
+
+    df_feat = _construir_features_batch(df_eval[VARIABLES_ORIGINALES])
+    X_norm = pd.DataFrame(scaler.transform(df_feat), columns=feature_cols)
+    y_true = label_encoder.transform(df_eval["burnout_level"])
+    y_pred = modelo.predict(X_norm)
+    y_proba = modelo.predict_proba(X_norm)
+
+    n_clases = len(label_encoder.classes_)
+    acc = accuracy_score(y_true, y_pred)
+    f1m = f1_score(y_true, y_pred, average="macro")
+    auc_macro = roc_auc_score(y_true, y_proba, multi_class="ovr", average="macro")
+    cm = confusion_matrix(y_true, y_pred, labels=range(n_clases))
+    precision, recall, f1_clase, soporte = precision_recall_fscore_support(
+        y_true, y_pred, labels=range(n_clases), zero_division=0
+    )
+
+    y_bin = label_binarize(y_true, classes=range(n_clases))
+    curvas_roc = {}
+    for i, clase in enumerate(label_encoder.classes_):
+        fpr, tpr, _ = roc_curve(y_bin[:, i], y_proba[:, i])
+        curvas_roc[clase] = {
+            "fpr": [round(float(v), 4) for v in fpr],
+            "tpr": [round(float(v), 4) for v in tpr],
+            "auc": round(float(auc(fpr, tpr)), 4),
+        }
+
+    return {
+        "n_registros": len(df_eval),
+        "accuracy": round(float(acc), 4),
+        "f1_macro": round(float(f1m), 4),
+        "auc_roc_macro": round(float(auc_macro), 4),
+        "clases": list(label_encoder.classes_),
+        "matriz_confusion": cm.tolist(),
+        "reporte_por_clase": [
+            {"clase": c, "precision": round(float(p), 3), "recall": round(float(r), 3),
+             "f1": round(float(f), 3), "soporte": int(s)}
+            for c, p, r, f, s in zip(label_encoder.classes_, precision, recall, f1_clase, soporte)
+        ],
+        "curvas_roc": curvas_roc,
     }
 
 
@@ -246,6 +383,8 @@ def info_modelo():
         "metricas_test": METRICAS_TEST,
         "shap_disponible": HAY_SHAP,
         "dataset_referencia_disponible": HAY_DATASET,
+        "segmentacion_kmeans_disponible": HAY_KMEANS,
+        "segmentos": list(NOMBRES_SEGMENTO.values()) if HAY_KMEANS else [],
     }
 
 
@@ -358,9 +497,30 @@ def optimizar(
     }
 
 
+@app.get("/sample/evaluation")
+def muestra_evaluacion(n: int = Query(50, ge=5, le=500)):
+    """
+    Descarga una muestra real (con burnout_level real) del dataset de entrenamiento,
+    lista para probar el endpoint /evaluate sin tener que conseguir datos externos.
+    """
+    if not HAY_DATASET:
+        return {"error": "Dataset de referencia no disponible en este despliegue."}
+    muestra = df_entrenamiento.sample(min(n, len(df_entrenamiento)))
+    return Response(
+        content=muestra.to_csv(index=False),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=muestra_evaluacion.csv"},
+    )
+
+
 @app.get("/health")
 def salud():
-    return {"status": "ok", "shap_disponible": HAY_SHAP, "dataset_referencia_disponible": HAY_DATASET}
+    return {
+        "status": "ok",
+        "shap_disponible": HAY_SHAP,
+        "dataset_referencia_disponible": HAY_DATASET,
+        "segmentacion_kmeans_disponible": HAY_KMEANS,
+    }
 
 
 @app.get("/")

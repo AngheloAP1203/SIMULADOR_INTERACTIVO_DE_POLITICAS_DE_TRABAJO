@@ -175,6 +175,23 @@
   .badge-mini.Low{background:rgba(46,204,113,.15); color:var(--low)}
   .badge-mini.Medium{background:rgba(245,166,35,.15); color:var(--med)}
   .badge-mini.High{background:rgba(255,92,92,.15); color:var(--high)}
+
+  /* ---------- segmento K-Means ---------- */
+  .seg-badge{
+    display:inline-flex; align-items:center; gap:6px; margin-top:10px; padding:7px 16px;
+    border-radius:999px; background:rgba(155,108,255,.12); border:1px solid rgba(155,108,255,.3);
+    color:#c9b3ff; font-size:.82rem; font-weight:600;
+  }
+
+  /* ---------- matriz de confusion (heatmap) ---------- */
+  .cm-wrap{overflow-x:auto}
+  table.cm{border-collapse:collapse; margin:0 auto; font-size:.82rem}
+  table.cm th{padding:8px 12px; color:var(--muted); font-weight:600; font-size:.74rem}
+  table.cm td{
+    width:64px; height:52px; text-align:center; font-weight:800; font-size:1rem;
+    border:1px solid rgba(255,255,255,.06); color:#fff;
+  }
+  table.cm td.axis{color:var(--muted); font-weight:600; font-size:.74rem; background:none; border:none}
 </style>
 </head>
 <body>
@@ -292,6 +309,24 @@
       <button class="btn ghost" onclick="descargarEjemploCSV()">⬇️ Descargar CSV de ejemplo</button>
     </div>
     <div id="loteResultado"></div>
+  </div>
+
+  <!-- Evaluación del modelo con datos etiquetados reales -->
+  <div class="card" style="margin-bottom:20px">
+    <h2>🧪 Evaluación del modelo con datos reales etiquetados</h2>
+    <p style="color:var(--muted); font-size:.82rem; margin-bottom:12px">
+      Sube un CSV con las 11 columnas del perfil <b>+ la columna <code>burnout_level</code></b> con la clase
+      real (Low/Medium/High). El sistema evalúa el modelo YA entrenado contra esos datos reales — accuracy,
+      F1, matriz de confusión y curvas ROC calculadas en vivo con <code>scikit-learn</code>, igual que en el notebook.
+    </p>
+    <div class="drop" onclick="document.getElementById('fileEval').click()">
+      📎 Clic aquí para seleccionar un CSV con etiquetas reales
+    </div>
+    <input type="file" id="fileEval" accept=".csv" class="hidden" onchange="evaluarModelo()">
+    <div class="btns">
+      <button class="btn ghost" onclick="descargarEjemploEvaluacion()">⬇️ Descargar muestra real de prueba (50 filas)</button>
+    </div>
+    <div id="evalResultado"></div>
   </div>
 
   <footer>
@@ -417,6 +452,9 @@ function renderResultado(d){
       html+=`<div class="chip"><div class="v">${v}</div><div class="k">${NOMBRES[k]||k}</div></div>`;
     }
     html+=`</div>`;
+  }
+  if(d.segmento){
+    html+=`<div><span class="seg-badge">🧩 Segmento (K-Means, no supervisado): ${d.segmento.segmento_nombre}</span></div>`;
   }
   if(d.comparacion_poblacional){
     html+=`<div class="percentiles"><h3>📌 Comparación vs 7,000 desarrolladores reales del dataset de entrenamiento</h3>`;
@@ -728,8 +766,9 @@ async function predecirLote(){
         <div class="info-chip"><div class="v">${d.resumen.brs_promedio_equipo}</div><div class="k">BRS promedio del equipo</div></div>
         <div class="info-chip"><div class="v">${Object.entries(d.resumen.conteo_por_clase).map(([c,n])=>n+" "+c).join(" · ")}</div><div class="k">Distribución</div></div>
       </div>
+      <div class="chart-box" style="height:220px; margin-bottom:16px"><canvas id="chartHistLote"></canvas></div>
       <div class="tabla-scroll"><table class="lote">
-        <thead><tr><th>#</th><th>Burnout</th><th>BRS</th><th>Low%</th><th>Medium%</th><th>High%</th></tr></thead><tbody>`;
+        <thead><tr><th>#</th><th>Burnout</th><th>BRS</th><th>Low%</th><th>Medium%</th><th>High%</th><th>Segmento (K-Means)</th></tr></thead><tbody>`;
     d.resultados.forEach(row=>{
       const p=row.probabilidades;
       html+=`<tr>
@@ -737,13 +776,114 @@ async function predecirLote(){
         <td><span class="badge-mini ${row.burnout_predicho}">${row.burnout_predicho}</span></td>
         <td>${row.burnout_risk_score}</td>
         <td>${p.Low ?? 0}%</td><td>${p.Medium ?? 0}%</td><td>${p.High ?? 0}%</td>
+        <td>${row.segmento ?? "—"}</td>
       </tr>`;
     });
     html+=`</tbody></table></div>`;
     cont.innerHTML=html;
+
+    const bins=Array(10).fill(0);
+    d.resultados.forEach(r=> bins[Math.min(9, Math.floor(r.burnout_risk_score/10))]++);
+    new Chart(document.getElementById("chartHistLote"),{
+      type:"bar",
+      data:{labels:bins.map((_,i)=>`${i*10}-${i*10+9}`),
+        datasets:[{data:bins, backgroundColor:"rgba(108,140,255,.7)", borderRadius:4}]},
+      options:{responsive:true, maintainAspectRatio:false,
+        scales:{x:{title:{display:true,text:"Rango de BRS",color:"#9aa5c0"}, grid:{display:false}, ticks:{color:"#9aa5c0"}},
+                y:{title:{display:true,text:"Nº desarrolladores",color:"#9aa5c0"}, grid:{color:"rgba(255,255,255,.07)"}, ticks:{color:"#9aa5c0", precision:0}}},
+        plugins:{legend:{display:false}}}
+    });
   }catch(e){
     cont.innerHTML=`<div class="placeholder">❌ Error al procesar el archivo: ${e.message}</div>`;
   }
+}
+
+/* ============================== EVALUACIÓN DEL MODELO ============================== */
+function descargarEjemploEvaluacion(){
+  window.open("/sample/evaluation?n=50", "_blank");
+}
+
+let chartROC=null;
+
+async function evaluarModelo(){
+  const input=document.getElementById("fileEval");
+  if(!input.files.length) return;
+  const cont=document.getElementById("evalResultado");
+  cont.innerHTML=`<div class="placeholder">⏳ Evaluando el modelo contra los datos reales...</div>`;
+  try{
+    const fd=new FormData(); fd.append("archivo", input.files[0]);
+    const r=await fetch("/evaluate",{method:"POST", body:fd});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const d=await r.json();
+    if(d.error){ cont.innerHTML=`<div class="placeholder">❌ ${d.error}</div>`; return; }
+
+    let html=`
+      <div class="info-grid">
+        <div class="info-chip"><div class="v">${d.n_registros}</div><div class="k">Registros evaluados</div></div>
+        <div class="info-chip"><div class="v" style="color:var(--low)">${(d.accuracy*100).toFixed(2)}%</div><div class="k">Accuracy</div></div>
+        <div class="info-chip"><div class="v" style="color:var(--low)">${d.f1_macro.toFixed(3)}</div><div class="k">F1-macro</div></div>
+        <div class="info-chip"><div class="v" style="color:var(--low)">${d.auc_roc_macro.toFixed(4)}</div><div class="k">AUC-ROC macro</div></div>
+      </div>
+      <div class="grid2">
+        <div>
+          <h3 style="font-size:.85rem; color:#cdd6ee; margin-bottom:10px">Matriz de confusión</h3>
+          <div class="cm-wrap">${matrizConfusionHTML(d.matriz_confusion, d.clases)}</div>
+        </div>
+        <div>
+          <h3 style="font-size:.85rem; color:#cdd6ee; margin-bottom:10px">Curvas ROC (One-vs-Rest)</h3>
+          <div class="chart-box" style="height:260px"><canvas id="chartROC"></canvas></div>
+        </div>
+      </div>
+      <h3 style="font-size:.85rem; color:#cdd6ee; margin:18px 0 10px">Reporte por clase</h3>
+      <div class="tabla-scroll"><table class="lote">
+        <thead><tr><th>Clase</th><th>Precision</th><th>Recall</th><th>F1</th><th>Soporte</th></tr></thead><tbody>
+        ${d.reporte_por_clase.map(x=>`<tr>
+          <td><span class="badge-mini ${x.clase}">${x.clase}</span></td>
+          <td>${x.precision}</td><td>${x.recall}</td><td>${x.f1}</td><td>${x.soporte}</td>
+        </tr>`).join("")}
+      </tbody></table></div>`;
+    cont.innerHTML=html;
+
+    const datasets=Object.entries(d.curvas_roc).map(([clase,curva])=>({
+      label:`${clase} (AUC=${curva.auc})`,
+      data:curva.fpr.map((x,i)=>({x, y:curva.tpr[i]})),
+      borderColor:COLOR_CLASE[clase], backgroundColor:"transparent", borderWidth:2.4,
+      pointRadius:0, tension:.15,
+    }));
+    datasets.push({label:"Azar (AUC=0.50)", data:[{x:0,y:0},{x:1,y:1}], borderColor:"rgba(255,255,255,.35)",
+      borderDash:[6,4], borderWidth:1.5, pointRadius:0});
+
+    if(chartROC) chartROC.destroy();
+    chartROC=new Chart(document.getElementById("chartROC"),{
+      type:"line",
+      data:{datasets},
+      options:{responsive:true, maintainAspectRatio:false,
+        scales:{
+          x:{type:"linear", min:0, max:1, title:{display:true,text:"Tasa de falsos positivos",color:"#9aa5c0"}, grid:{color:"rgba(255,255,255,.07)"}, ticks:{color:"#9aa5c0"}},
+          y:{min:0, max:1, title:{display:true,text:"Tasa de verdaderos positivos",color:"#9aa5c0"}, grid:{color:"rgba(255,255,255,.07)"}, ticks:{color:"#9aa5c0"}}
+        },
+        plugins:{legend:{labels:{color:"#cdd6ee", font:{size:10}}}}}
+    });
+  }catch(e){
+    cont.innerHTML=`<div class="placeholder">❌ Error al evaluar: ${e.message}</div>`;
+  }
+}
+
+function matrizConfusionHTML(cm, clases){
+  const max=Math.max(...cm.flat());
+  let html=`<table class="cm"><tr><td class="axis"></td><td class="axis" colspan="${clases.length}">Predicho</td></tr>`;
+  html+=`<tr><td class="axis"></td>`+clases.map(c=>`<th>${c}</th>`).join("")+`</tr>`;
+  cm.forEach((fila,i)=>{
+    html+=`<tr><th style="color:var(--muted)">${clases[i]}</th>`;
+    fila.forEach((v,j)=>{
+      const intensidad=max?v/max:0;
+      const color=i===j ? `rgba(46,204,113,${0.15+intensidad*0.75})` : `rgba(255,92,92,${0.1+intensidad*0.55})`;
+      html+=`<td style="background:${color}">${v}</td>`;
+    });
+    html+=`</tr>`;
+  });
+  html+=`</table>`;
+  return html;
 }
 
 /* ============================== INICIALIZACIÓN ============================== */
