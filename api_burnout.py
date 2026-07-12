@@ -48,6 +48,19 @@ except Exception:
     explainer = None
     HAY_SHAP = False
 
+# Red neuronal de SEGUNDA OPINION (MLP entrenada sobre los mismos datos, exportada por el
+# notebook). Dos familias de modelos distintas (boosting de arboles vs red neuronal): si
+# coinciden, la prediccion es mas confiable; si discrepan, se marca para revision humana.
+try:
+    with open(os.path.join(RUTA_BASE, "nn_model.pkl"), "rb") as f:
+        _nn_art = pickle.load(f)
+    red_neuronal = _nn_art["model"]
+    NN_INFO = {k: v for k, v in _nn_art.items() if k != "model"}
+    HAY_NN = True
+except Exception:
+    red_neuronal, NN_INFO = None, {}
+    HAY_NN = False
+
 # Dataset REAL usado en el entrenamiento (7,000 registros). Se usa para calcular
 # percentiles poblacionales y rangos reales del analisis de sensibilidad.
 # Carga protegida: si el CSV no esta presente en el entorno de despliegue, esas
@@ -198,6 +211,48 @@ def _segmento_de_perfil(perfil: dict) -> dict | None:
     return {"segmento_id": seg_id, "segmento_nombre": NOMBRES_SEGMENTO[seg_id]}
 
 
+NOMBRES_LEGIBLES = {
+    "age": "la edad", "experience_years": "los años de experiencia",
+    "daily_work_hours": "las horas de trabajo diario", "sleep_hours": "las horas de sueño",
+    "caffeine_intake": "el consumo de cafeína", "bugs_per_day": "los bugs resueltos por día",
+    "commits_per_day": "los commits por día", "meetings_per_day": "las reuniones diarias",
+    "screen_time": "el tiempo frente a pantalla", "exercise_hours": "las horas de ejercicio",
+    "stress_level": "el nivel de estrés", "work_life_ratio": "el desequilibrio trabajo/descanso",
+    "productivity_score": "la carga de trabajo técnico", "meeting_fatigue": "la fatiga por reuniones",
+    "recovery_index": "la capacidad de recuperación",
+}
+NIVEL_LEGIBLE = {"Low": "BAJO", "Medium": "MEDIO", "High": "ALTO"}
+
+
+def _explicacion_natural(clase, brs, shap_items, segunda_opinion):
+    """
+    Servicio cognitivo de explicacion: convierte la salida numerica del modelo (SHAP)
+    en una explicacion en lenguaje natural, generada deterministicamente a partir de
+    las contribuciones reales de cada variable (sin inventar nada).
+    """
+    frases = [f"El modelo clasifica este perfil con riesgo de burnout {NIVEL_LEGIBLE.get(clase, clase)} "
+              f"(índice {brs:.0f} de 100)."]
+    if shap_items:
+        suben = [x for x in shap_items if x["contribucion"] > 0][:3]
+        bajan = [x for x in shap_items if x["contribucion"] < 0][:2]
+        if suben:
+            frases.append("Los factores que más elevan este riesgo son "
+                          + ", ".join(NOMBRES_LEGIBLES.get(x["variable"], x["variable"]) for x in suben) + ".")
+        if bajan:
+            frases.append("En sentido contrario, "
+                          + " y ".join(NOMBRES_LEGIBLES.get(x["variable"], x["variable"]) for x in bajan)
+                          + " reducen la estimación.")
+    if segunda_opinion is not None:
+        if segunda_opinion["coincide"]:
+            frases.append("La red neuronal de verificación coincide con esta clasificación, "
+                          "lo que refuerza la confiabilidad del resultado.")
+        else:
+            frases.append(f"Atención: la red neuronal de verificación clasifica este perfil como "
+                          f"{NIVEL_LEGIBLE.get(segunda_opinion['burnout_predicho'], '?')} — al haber discrepancia "
+                          f"entre los dos modelos, se recomienda revisión humana de este caso.")
+    return " ".join(frases)
+
+
 def _percentiles(perfil: dict) -> dict | None:
     """
     Compara cada variable del perfil contra los 7,000 registros REALES usados en el
@@ -234,14 +289,28 @@ def predecir(perfil: PerfilDesarrollador):
         "segmento": _segmento_de_perfil(datos),
     }
 
+    # Segunda opinion: red neuronal (familia de modelo distinta) sobre el mismo perfil
+    segunda = None
+    if HAY_NN:
+        clase_nn = label_encoder.inverse_transform([int(red_neuronal.predict(fila_norm)[0])])[0]
+        segunda = {
+            "modelo": "Red Neuronal MLP (64-32-16)",
+            "burnout_predicho": clase_nn,
+            "coincide": bool(clase_nn == clase),
+        }
+        respuesta["segunda_opinion_red_neuronal"] = segunda
+
+    shap_items = None
     if HAY_SHAP:
         shap_vals = explainer.shap_values(fila_norm)
         contrib = dict(zip(feature_cols, shap_vals[0, :, clase_idx].tolist()))
         orden = sorted(contrib.items(), key=lambda kv: abs(kv[1]), reverse=True)
-        respuesta["explicacion_shap"] = [
-            {"variable": v, "contribucion": round(c, 4)} for v, c in orden
-        ]
-        respuesta["explicacion_shap_top3"] = respuesta["explicacion_shap"][:3]
+        shap_items = [{"variable": v, "contribucion": round(c, 4)} for v, c in orden]
+        respuesta["explicacion_shap"] = shap_items
+        respuesta["explicacion_shap_top3"] = shap_items[:3]
+
+    # Servicio cognitivo de explicacion en lenguaje natural (generado desde SHAP real)
+    respuesta["explicacion_texto"] = _explicacion_natural(clase, brs, shap_items, segunda)
 
     return respuesta
 
@@ -385,6 +454,7 @@ def info_modelo():
         "dataset_referencia_disponible": HAY_DATASET,
         "segmentacion_kmeans_disponible": HAY_KMEANS,
         "segmentos": list(NOMBRES_SEGMENTO.values()) if HAY_KMEANS else [],
+        "red_neuronal_segunda_opinion": {"disponible": HAY_NN, **NN_INFO},
     }
 
 
@@ -520,6 +590,7 @@ def salud():
         "shap_disponible": HAY_SHAP,
         "dataset_referencia_disponible": HAY_DATASET,
         "segmentacion_kmeans_disponible": HAY_KMEANS,
+        "red_neuronal_disponible": HAY_NN,
     }
 
 

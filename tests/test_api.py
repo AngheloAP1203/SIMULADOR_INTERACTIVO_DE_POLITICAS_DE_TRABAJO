@@ -189,3 +189,25 @@ def test_segmento_coherente_con_riesgo():
     sano = cliente.post("/predict", json=PERFIL_SALUDABLE).json()["segmento"]
     assert alto["segmento_nombre"] == "Sobrecargado / alto riesgo"
     assert sano["segmento_nombre"] == "Equilibrado / bajo riesgo"
+
+
+# ---------------------------------------------------------------------------
+# 8. Red neuronal en produccion (segunda opinion) y explicacion cognitiva
+# ---------------------------------------------------------------------------
+@pytest.mark.skipif(not api_burnout.HAY_NN, reason="red neuronal no disponible")
+def test_red_neuronal_coincide_en_perfiles_claros():
+    # En perfiles extremos, LightGBM y la red neuronal (familias de modelos distintas)
+    # deben dar la MISMA clase: evidencia real de doble modelo funcional en produccion.
+    for perfil, esperado in [(PERFIL_ALTO_RIESGO, "High"), (PERFIL_SALUDABLE, "Low")]:
+        d = cliente.post("/predict", json=perfil).json()
+        so = d["segunda_opinion_red_neuronal"]
+        assert so["burnout_predicho"] == esperado
+        assert so["coincide"] is True
+
+
+def test_explicacion_en_lenguaje_natural_refleja_la_prediccion():
+    d = cliente.post("/predict", json=PERFIL_ALTO_RIESGO).json()
+    texto = d["explicacion_texto"]
+    assert "ALTO" in texto                                # menciona el nivel real predicho
+    assert "estrés" in texto or "estres" in texto          # el factor SHAP dominante real
+    assert len(texto) > 80                                 # explicacion completa, no un stub

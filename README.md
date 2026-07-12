@@ -15,6 +15,8 @@ API REST (FastAPI) con un **simulador What-If** web y explicaciones **SHAP** por
 | Archivo | Descripción |
 |---|---|
 | `burnout_model.pkl` | Modelo LightGBM entrenado + `StandardScaler` + `LabelEncoder` + orden de variables |
+| `nn_model.pkl` | Red neuronal MLP (64-32-16) entrenada sobre los mismos datos — segunda opinión en producción |
+| `tests/test_api.py` | Suite de 17 pruebas automatizadas (pytest) contra el modelo real |
 | `api_burnout.py` | API REST con FastAPI: `POST /predict`, `POST /predict/batch`, `POST /evaluate`, `POST /optimize`, `POST /sensitivity`, `GET /model/info`, `GET /model/importance` |
 | `static/index.html` | Frontend tipo dashboard: simulador What-If, comparador de escenarios, recomendaciones, comparación poblacional, segmentación K-Means, sensibilidad, predicción por lotes, evaluación con matriz de confusión/ROC y ficha técnica del modelo |
 | `df_burnout_procesado.csv` | Dataset real usado en el entrenamiento (7,000 registros), usado para percentiles y rangos de sensibilidad |
@@ -45,13 +47,14 @@ pytest tests/ -v    # 15 passed
 | Requisito | Evidencia en este proyecto |
 |---|---|
 | Preprocesamiento de datos | Imputación mediana/moda, winsorización, `StandardScaler` (notebook secc. 4; mismo pipeline en `api_burnout.py`) |
-| Selección de características | 11 originales + 4 derivadas justificadas; ranking de importancia nativa + SHAP (`GET /model/importance`) |
-| Redes neuronales | MLP con TensorFlow/Keras (3 capas, ReLU, dropout, early stopping) comparada contra 5 modelos más (notebook secc. 5) |
+| Selección de características | Técnica formal de **información mutua** (`mutual_info_classif`, notebook secc. 12.3b) + correlación + importancia nativa y SHAP; 11 originales + 4 derivadas justificadas (`GET /model/importance`) |
+| Redes neuronales **integradas en el sistema funcional** | MLP con TensorFlow/Keras evaluada contra 5 modelos más (notebook secc. 5) **y desplegada en producción** (`nn_model.pkl`): cada `/predict` devuelve la segunda opinión de la red neuronal y marca discrepancias para revisión humana |
+| Servicios cognitivos | El sistema desplegado expone servicios de IA consumibles por API: **decisión** (`/predict`, `/predict/batch`), **explicación en lenguaje natural** generada desde SHAP (`explicacion_texto` en cada respuesta), **recomendación prescriptiva** (`/optimize`) y **evaluación** (`/evaluate`) |
 | Entrenamiento + validación con métricas | `RandomizedSearchCV` + CV estratificada k=5; Accuracy 98.19 %, F1 0.982, AUC 0.9953 en test held-out; **IC 95 % por bootstrap (1,000 remuestreos)** |
 | Despliegue funcional | API FastAPI + dashboard en Render (este repo); endpoint `/evaluate` recalcula métricas en vivo con sklearn |
-| Evidencias verificables de funcionamiento | [PRUEBAS.md](PRUEBAS.md): 15/15 pruebas pytest + pruebas HTTP reales en producción |
-| Transparencia | SHAP (global + waterfall por predicción, expuesto en la API) + LIME (contraste), coeficientes de Regresión Logística |
-| Mitigación de sesgos | `class_weight='balanced'` en todos los modelos (desbalance 52/26/23); F1-macro como métrica (pondera igual las 3 clases); auditoría de variables sensibles con SHAP; matriz de confusión por clase sin degradar minorías |
+| Evidencias verificables de funcionamiento | [PRUEBAS.md](PRUEBAS.md): 17/17 pruebas pytest + pruebas HTTP reales en producción |
+| Transparencia | SHAP (global + waterfall, expuesto en la API) + LIME (contraste) + coeficientes de Regresión Logística + **explicación en lenguaje natural por predicción** + **doble modelo con detección de discrepancias** |
+| Mitigación de sesgos (registrada) | `class_weight='balanced'` en los 6 modelos; F1-macro como métrica; **auditoría de equidad por subgrupos de edad y experiencia (brecha máx. F1 ≈ 0.016, notebook secc. 8.6)**; información mutua ≈ 0 de atributos demográficos; registro formal en notebook secc. 11.1 |
 | Validación cruzada | Estratificada k=5 (F1 0.9845 ± 0.0034) + bootstrap para intervalos de confianza |
 | Optimización | Búsqueda de hiperparámetros (25 comb. × 5 pliegues) + early stopping |
 | Impacto social | Análisis poblacional con ROI estimado (~$4.1M/año bajo supuestos declarados); optimizador prescriptivo de políticas de bienestar; uso preventivo y no punitivo (secc. 11 del notebook) |

@@ -182,6 +182,18 @@
     border-radius:999px; background:rgba(155,108,255,.12); border:1px solid rgba(155,108,255,.3);
     color:#c9b3ff; font-size:.82rem; font-weight:600;
   }
+  .nn-badge{
+    display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:7px 16px;
+    border-radius:999px; font-size:.82rem; font-weight:600;
+  }
+  .nn-badge.ok{background:rgba(46,204,113,.12); border:1px solid rgba(46,204,113,.3); color:#7ee2a8}
+  .nn-badge.warn{background:rgba(245,166,35,.12); border:1px solid rgba(245,166,35,.35); color:#ffd28a}
+  .explicacion{
+    margin-top:16px; padding:14px 16px; border-radius:12px; text-align:left;
+    background:rgba(108,140,255,.08); border:1px solid rgba(108,140,255,.22);
+    font-size:.86rem; line-height:1.55; color:#dbe3f7;
+  }
+  .explicacion b{color:#fff}
 
   /* ---------- matriz de confusion (heatmap) ---------- */
   .cm-wrap{overflow-x:auto}
@@ -455,6 +467,18 @@ function renderResultado(d){
   }
   if(d.segmento){
     html+=`<div><span class="seg-badge">🧩 Segmento (K-Means, no supervisado): ${d.segmento.segmento_nombre}</span></div>`;
+  }
+  if(d.segunda_opinion_red_neuronal){
+    const so=d.segunda_opinion_red_neuronal;
+    if(so.coincide){
+      html+=`<div><span class="nn-badge ok">🧠 Red neuronal (2ª opinión): coincide — predicción reforzada</span></div>`;
+    }else{
+      const n=so.burnout_predicho==="Low"?"BAJO":so.burnout_predicho==="Medium"?"MEDIO":"ALTO";
+      html+=`<div><span class="nn-badge warn">🧠 Red neuronal (2ª opinión): ${n} — discrepancia, revisar caso</span></div>`;
+    }
+  }
+  if(d.explicacion_texto){
+    html+=`<div class="explicacion">💬 <b>Explicación del sistema:</b> ${d.explicacion_texto}</div>`;
   }
   if(d.comparacion_poblacional){
     html+=`<div class="percentiles"><h3>📌 Comparación vs 7,000 desarrolladores reales del dataset de entrenamiento</h3>`;

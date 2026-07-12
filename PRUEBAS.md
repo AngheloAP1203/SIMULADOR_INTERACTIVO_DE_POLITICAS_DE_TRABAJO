@@ -5,7 +5,7 @@ Registro de pruebas **reales** (nada simulado) ejecutadas sobre el modelo entren
 
 ---
 
-## 1. Suite automatizada (pytest) — 15/15 pruebas superadas ✅
+## 1. Suite automatizada (pytest) — 17/17 pruebas superadas ✅
 
 Ejecutada contra la API real con `TestClient` (peticiones HTTP reales en memoria, modelo real cargado).
 
@@ -30,8 +30,27 @@ pytest tests/ -v
 | 13 | `test_sensitivity_stress_es_creciente` | Dependencia parcial: más estrés ⇒ más riesgo (Low→High) | ✅ |
 | 14 | `test_sensitivity_rechaza_variable_invalida` | Manejo de errores de parámetros | ✅ |
 | 15 | `test_segmento_coherente_con_riesgo` | K-Means asigna segmentos coherentes con el riesgo | ✅ |
+| 16 | `test_red_neuronal_coincide_en_perfiles_claros` | La red neuronal desplegada (2ª opinión) coincide con LightGBM en perfiles extremos | ✅ |
+| 17 | `test_explicacion_en_lenguaje_natural_refleja_la_prediccion` | La explicación cognitiva menciona el nivel y los factores SHAP reales | ✅ |
 
-Resultado: **15 passed in 11.01s** (con SHAP real activo).
+Resultado: **17 passed in 33.37s** (con SHAP real activo).
+
+### Doble modelo en producción (verificado)
+- Red neuronal MLP (64-32-16): **Accuracy 94.48 % / F1 0.944** en el mismo test held-out.
+- **Acuerdo LightGBM ↔ Red neuronal: 95.33 %** de los 1,050 casos de prueba; las discrepancias
+  se señalan en la API (`"coincide": false`) para revisión humana.
+
+### Auditoría de equidad (verificada sobre el test set)
+| Subgrupo | n | Accuracy | F1-macro |
+|---|---|---|---|
+| Edad 20-27 | 301 | 0.9734 | 0.9727 |
+| Edad 28-36 | 413 | 0.9831 | 0.9835 |
+| Edad 37-44 | 336 | 0.9881 | 0.9884 |
+| Experiencia 0-4 | 244 | 0.9836 | 0.9831 |
+| Experiencia 5-11 | 379 | 0.9894 | 0.9894 |
+| Experiencia 12-19 | 427 | 0.9742 | 0.9746 |
+
+Brecha máxima de F1 entre subgrupos: **≈ 0.016** — el modelo no penaliza a ningún grupo demográfico.
 
 ## 2. Pruebas del despliegue en producción (Render) ✅
 
