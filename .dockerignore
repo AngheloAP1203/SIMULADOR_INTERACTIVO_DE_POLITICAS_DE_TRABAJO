@@ -1,13 +1,13 @@
-__pycache__/
-*.pyc
 .venv/
 venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
 .env
-.DS_Store
 *.log
 .pytest_cache/
 .ipynb_checkpoints/
 node_modules/
 .vscode/
 .idea/
-burnout_model_backup.pkl

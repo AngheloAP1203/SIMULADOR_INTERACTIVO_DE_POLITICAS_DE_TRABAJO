@@ -2,7 +2,9 @@
 API REST del Simulador Interactivo de Politicas de Trabajo (Prediccion de Burnout).
 
 Proyecto de Machine Learning - UPAO - Ing. de Sistemas e Inteligencia Artificial
-Modelo: LightGBM (clasificacion multiclase Low/Medium/High) + explicacion SHAP.
+Modelo principal: LightGBM (clasificacion multiclase Low/Medium/High) + SHAP.
+Modelo secundario: MLPClassifier (red neuronal), comparado en vivo en /predict.
+Servicio cognitivo externo: analisis de sentimiento via Hugging Face Inference API.
 
 Ejecutar en local:   uvicorn api_burnout:app --reload
 En produccion:       uvicorn api_burnout:app --host 0.0.0.0 --port $PORT
@@ -10,9 +12,9 @@ En produccion:       uvicorn api_burnout:app --host 0.0.0.0 --port $PORT
 import io
 import os
 import pickle
-
 import numpy as np
 import pandas as pd
+import requests
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -24,10 +26,9 @@ from sklearn.metrics import (
     roc_auc_score, roc_curve,
 )
 from sklearn.preprocessing import StandardScaler, label_binarize
-
-# ---------------------------------------------------------------------------
+ 
 # Carga de artefactos (modelo + scaler + label encoder + orden de variables)
-# ---------------------------------------------------------------------------
+
 RUTA_BASE = os.path.dirname(os.path.abspath(__file__))
 RUTA_MODELO = os.path.join(RUTA_BASE, "burnout_model.pkl")
 
@@ -48,10 +49,36 @@ except Exception:
     explainer = None
     HAY_SHAP = False
 
+# Segundo modelo (red neuronal / MLPClassifier), entrenado con train_mlp.py sobre
+# el MISMO scaler y feature_cols que LightGBM. Se usa como comparacion en vivo
+# en /predict y en /model/info. Carga protegida: si el artefacto no esta
+# presente, esa comparacion se desactiva.
+RUTA_MLP = os.path.join(RUTA_BASE, "burnout_mlp.pkl")
+try:
+    with open(RUTA_MLP, "rb") as f:
+        artefactos_mlp = pickle.load(f)
+    modelo_mlp = artefactos_mlp["model"]
+    METRICAS_MLP = artefactos_mlp["metricas_test"]
+    HAY_MLP = True
+except Exception:
+    modelo_mlp, METRICAS_MLP = None, None
+    HAY_MLP = False
+
+# Servicio cognitivo externo (Hugging Face Inference API): analisis de sentimiento
+# sobre un comentario de texto libre opcional del desarrollador. Requiere la
+# variable de entorno HF_API_TOKEN (gratuita en huggingface.co/settings/tokens).
+# Sin token configurado, la funcionalidad se desactiva con gracia (igual patron
+# que SHAP y el dataset de referencia).
+HF_API_TOKEN = os.environ.get("HF_API_TOKEN")
+HF_MODELO_SENTIMIENTO = "nlptown/bert-base-multilingual-uncased-sentiment"
+HAY_HF = bool(HF_API_TOKEN)
+
 # Red neuronal de SEGUNDA OPINION (MLP 64-32-16 entrenada sobre los mismos datos, incluida
 # dentro de burnout_model.pkl). Dos familias de modelos distintas (boosting de arboles vs
 # red neuronal): si coinciden, la prediccion es mas confiable; si discrepan, se marca para
 # revision humana. Opcional: si el pkl no la trae, la API funciona solo con LightGBM.
+# Nota: coexiste con el MLP independiente de arriba (burnout_mlp.pkl); esta version viene
+# empaquetada junto con la auditoria de equidad usada en /model/compare y /fairness.
 red_neuronal      = artefactos.get("nn_model")
 METRICAS_MODELOS  = artefactos.get("metricas_modelos", {})
 AUDITORIA_EQUIDAD = artefactos.get("auditoria_equidad")
@@ -118,62 +145,6 @@ PESO_ORDEN = np.array([SEVERIDAD[c] for c in label_encoder.classes_])
 
 DERIVADAS = ["work_life_ratio", "productivity_score", "meeting_fatigue", "recovery_index"]
 
-# ---------------------------------------------------------------------------
-# COPENHAGEN BURNOUT INVENTORY (CBI) - instrumento clinico VALIDADO y de dominio
-# publico (Kristensen, Borritz, Villadsen & Christensen, Work & Stress 2005;19(3):192-207;
-# gratuito para uso no comercial). Puntuacion DETERMINISTICA publicada, SIN Machine
-# Learning y SIN datos sinteticos: cada respuesta vale Siempre=100 / A menudo=75 /
-# A veces=50 / Rara vez=25 / Nunca=0; se promedia por subescala; >=50 indica burnout.
-# Usamos las subescalas Personal (6 items) y Laboral (7 items) = 13 items.
-# ---------------------------------------------------------------------------
-CBI_CITACION = ("Copenhagen Burnout Inventory (CBI) - Kristensen TS, Borritz M, Villadsen E, "
-                "Christensen KB. Work & Stress. 2005;19(3):192-207. Uso no comercial.")
-
-CBI_OPCIONES = [
-    {"texto": "Siempre",   "valor": 100},
-    {"texto": "A menudo",  "valor": 75},
-    {"texto": "A veces",   "valor": 50},
-    {"texto": "Rara vez",  "valor": 25},
-    {"texto": "Nunca / casi nunca", "valor": 0},
-]
-
-# (subescala, texto, invertido). El item de energia para familia/amigos se puntua invertido.
-CBI_ITEMS = [
-    ("personal", "¿Con qué frecuencia te sientes cansado/a?", False),
-    ("personal", "¿Con qué frecuencia estás físicamente agotado/a?", False),
-    ("personal", "¿Con qué frecuencia estás emocionalmente agotado/a?", False),
-    ("personal", "¿Con qué frecuencia piensas: 'ya no puedo más'?", False),
-    ("personal", "¿Con qué frecuencia te sientes desgastado/a?", False),
-    ("personal", "¿Con qué frecuencia te sientes débil y propenso/a a enfermar?", False),
-    ("laboral",  "¿Tu trabajo es emocionalmente agotador?", False),
-    ("laboral",  "¿Te sientes quemado/a (agotado/a) por tu trabajo?", False),
-    ("laboral",  "¿Tu trabajo te resulta frustrante?", False),
-    ("laboral",  "¿Te sientes agotado/a al final de la jornada laboral?", False),
-    ("laboral",  "¿Te sientes agotado/a por la mañana al pensar en otro día de trabajo?", False),
-    ("laboral",  "¿Sientes que cada hora de trabajo te resulta agotadora?", False),
-    ("laboral",  "¿Tienes energía suficiente para tu familia y amigos en tu tiempo libre?", True),
-]
-
-CBI_CORTES = [
-    (50,  "Sin burnout / bajo",  "Tu nivel de agotamiento está por debajo del umbral clínico. Mantén tus hábitos de descanso."),
-    (75,  "Burnout moderado",    "Hay señales de agotamiento. Conviene revisar carga de trabajo, sueño y descanso."),
-    (100, "Burnout alto",        "Nivel de agotamiento elevado. Se recomienda tomar medidas de bienestar y considerar apoyo profesional."),
-    (101, "Burnout severo",      "Nivel de agotamiento muy elevado. Es importante buscar apoyo y reducir la carga cuanto antes."),
-]
-
-
-class RespuestasCBI(BaseModel):
-    # 13 respuestas, cada una en {0,25,50,75,100}, en el orden de CBI_ITEMS
-    respuestas: list[int]
-
-
-def _categoria_cbi(score: float) -> tuple[str, str]:
-    for limite, nombre, interpretacion in CBI_CORTES:
-        if score < limite:
-            return nombre, interpretacion
-    return CBI_CORTES[-1][1], CBI_CORTES[-1][2]
-
-
 # Palancas del optimizador prescriptivo (mismas que el notebook):
 #   nombre -> (variable, niveles graduales hacia una meta saludable, costo por nivel)
 PALANCAS = {
@@ -186,8 +157,9 @@ PALANCAS = {
 
 app = FastAPI(
     title="API Simulador de Burnout",
-    description="Prediccion del nivel de burnout de desarrolladores con LightGBM + SHAP",
-    version="3.0",
+    description="Prediccion del nivel de burnout de desarrolladores con LightGBM + SHAP, "
+                 "comparacion con red neuronal (MLP) y analisis de sentimiento (Hugging Face)",
+    version="3.1",
 )
 
 # CORS abierto para que el frontend (mismo dominio u otro) pueda consumir la API
@@ -211,6 +183,7 @@ class PerfilDesarrollador(BaseModel):
     screen_time: float
     exercise_hours: float
     stress_level: float
+    comentario: str | None = None
 
 
 def _construir_features(perfil: dict) -> pd.DataFrame:
@@ -321,6 +294,51 @@ def _percentiles(perfil: dict) -> dict | None:
     return resultado
 
 
+def _prediccion_mlp(fila_norm: pd.DataFrame) -> dict | None:
+    """
+    Prediccion de la red neuronal (MLPClassifier) sobre la MISMA fila normalizada
+    que ya se le paso a LightGBM, para comparar ambos modelos en vivo dentro de
+    la misma peticion.
+    """
+    if not HAY_MLP:
+        return None
+    proba = modelo_mlp.predict_proba(fila_norm)[0]
+    clase_idx = int(np.argmax(proba))
+    clase = label_encoder.inverse_transform([clase_idx])[0]
+    return {
+        "burnout_predicho": clase,
+        "probabilidades": {c: round(float(p) * 100, 1) for c, p in zip(label_encoder.classes_, proba)},
+    }
+
+
+def _analizar_sentimiento(texto: str) -> dict | None:
+    """
+    Servicio cognitivo externo (Hugging Face Inference API): clasifica el
+    sentimiento de un comentario de texto libre opcional del desarrollador
+    (modelo multilingue de 1 a 5 estrellas), como lectura cualitativa que
+    complementa la prediccion cuantitativa de burnout.
+    """
+    if not HAY_HF or not texto or not texto.strip():
+        return None
+    try:
+        resp = requests.post(
+            f"https://api-inference.huggingface.co/models/{HF_MODELO_SENTIMIENTO}",
+            headers={"Authorization": f"Bearer {HF_API_TOKEN}"},
+            json={"inputs": texto[:512]},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        mejor = max(resp.json()[0], key=lambda x: x["score"])
+        estrellas = int(mejor["label"][0])
+        return {
+            "etiqueta": mejor["label"],
+            "confianza": round(float(mejor["score"]), 3),
+            "polaridad": "negativo" if estrellas <= 2 else ("neutral" if estrellas == 3 else "positivo"),
+        }
+    except Exception:
+        return {"error": "Servicio de analisis de sentimiento no disponible en este momento"}
+
+
 @app.post("/predict")
 def predecir(perfil: PerfilDesarrollador):
     datos = perfil.dict()
@@ -340,6 +358,8 @@ def predecir(perfil: PerfilDesarrollador):
         "features_derivadas": derivadas,
         "comparacion_poblacional": _percentiles(datos),
         "segmento": _segmento_de_perfil(datos),
+        "modelo_mlp_red_neuronal": _prediccion_mlp(fila_norm),
+        "analisis_sentimiento": _analizar_sentimiento(datos.get("comentario")),
     }
 
     # Segunda opinion: red neuronal (familia de modelo distinta) sobre el mismo perfil
@@ -507,6 +527,12 @@ def info_modelo():
         "dataset_referencia_disponible": HAY_DATASET,
         "segmentacion_kmeans_disponible": HAY_KMEANS,
         "segmentos": list(NOMBRES_SEGMENTO.values()) if HAY_KMEANS else [],
+        "red_neuronal_mlp_disponible": HAY_MLP,
+        "analisis_sentimiento_disponible": HAY_HF,
+        "comparacion_modelos": {
+            "lightgbm": METRICAS_TEST,
+            "mlp_red_neuronal": METRICAS_MLP,
+        },
         "red_neuronal_segunda_opinion": {"disponible": HAY_NN, **NN_INFO},
     }
 
@@ -643,54 +669,6 @@ def optimizar(
     }
 
 
-@app.get("/cbi/items")
-def cbi_items():
-    """Devuelve las 13 preguntas del CBI y las opciones de respuesta (instrumento real)."""
-    preguntas = [
-        {"n": i + 1, "subescala": sub, "texto": txt, "invertido": inv}
-        for i, (sub, txt, inv) in enumerate(CBI_ITEMS)
-    ]
-    return {"instrumento": "Copenhagen Burnout Inventory (CBI)", "citacion": CBI_CITACION,
-            "opciones": CBI_OPCIONES, "n_items": len(CBI_ITEMS), "preguntas": preguntas}
-
-
-@app.post("/cbi")
-def evaluar_cbi(datos: RespuestasCBI):
-    """
-    Evaluacion REAL de burnout con el Copenhagen Burnout Inventory (instrumento clinico
-    validado). Puntuacion deterministica publicada, SIN Machine Learning ni datos sinteticos:
-    promedia las respuestas por subescala (aplicando el item invertido) y devuelve el nivel
-    real de burnout de la persona. Sirve a una persona real hoy.
-    """
-    r = datos.respuestas
-    if len(r) != len(CBI_ITEMS):
-        return {"error": f"Se esperaban {len(CBI_ITEMS)} respuestas, se recibieron {len(r)}."}
-    if any(v not in (0, 25, 50, 75, 100) for v in r):
-        return {"error": "Cada respuesta debe ser uno de: 0, 25, 50, 75, 100."}
-
-    personal, laboral = [], []
-    for valor, (sub, _txt, invertido) in zip(r, CBI_ITEMS):
-        puntos = (100 - valor) if invertido else valor   # item invertido
-        (personal if sub == "personal" else laboral).append(puntos)
-
-    score_personal = round(float(np.mean(personal)), 1)
-    score_laboral  = round(float(np.mean(laboral)), 1)
-    score_global   = round((score_personal + score_laboral) / 2, 1)
-    categoria, interpretacion = _categoria_cbi(score_global)
-
-    return {
-        "instrumento": "Copenhagen Burnout Inventory (CBI)",
-        "burnout_personal": score_personal,
-        "burnout_laboral": score_laboral,
-        "burnout_global": score_global,
-        "burnout_presente": score_global >= 50,      # umbral clinico publicado
-        "categoria": categoria,
-        "interpretacion": interpretacion,
-        "citacion": CBI_CITACION,
-        "aviso": "Herramienta de autoconocimiento y apoyo, no constituye un diagnóstico médico.",
-    }
-
-
 @app.get("/sample/evaluation")
 def muestra_evaluacion(n: int = Query(50, ge=5, le=500)):
     """
@@ -714,7 +692,9 @@ def salud():
         "shap_disponible": HAY_SHAP,
         "dataset_referencia_disponible": HAY_DATASET,
         "segmentacion_kmeans_disponible": HAY_KMEANS,
-        "red_neuronal_disponible": HAY_NN,
+        "red_neuronal_mlp_disponible": HAY_MLP,
+        "analisis_sentimiento_disponible": HAY_HF,
+        "red_neuronal_segunda_opinion_disponible": HAY_NN,
     }
 
 
