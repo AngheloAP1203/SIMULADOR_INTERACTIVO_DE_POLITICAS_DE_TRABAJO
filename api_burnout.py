@@ -341,7 +341,7 @@ def _analizar_sentimiento(texto: str) -> dict | None:
 
 @app.post("/predict")
 def predecir(perfil: PerfilDesarrollador):
-    datos = perfil.dict()
+    datos = perfil.model_dump()
     clase_idx, clase, proba, brs, fila_norm = _predecir_interno(datos)
 
     # Valores de las 4 variables derivadas (para mostrarlas en el frontend)
@@ -590,10 +590,10 @@ def analisis_sensibilidad(
         v_max = float(df_entrenamiento[variable].max())
     else:
         # Respaldo: usa el rango +/-50% del valor actual si no hay dataset de referencia
-        actual = perfil.dict()[variable]
+        actual = perfil.model_dump()[variable]
         v_min, v_max = actual * 0.5, actual * 1.5
 
-    base = perfil.dict()
+    base = perfil.model_dump()
     puntos = np.linspace(v_min, v_max, n_puntos)
     curva = []
     for valor in puntos:
@@ -616,24 +616,38 @@ def optimizar(
     En cada paso aplica la palanca con mayor potencial de reduccion del BRS,
     hasta alcanzar el objetivo o agotar el presupuesto de costo organizacional.
     """
-    actual = perfil.dict()
-    nivel  = {k: 0 for k in PALANCAS}
+    actual = perfil.model_dump()
+
+    # Cada palanca solo debe ofrecer niveles que sean una mejora REAL respecto al
+    # valor actual de la persona (si la lista busca reducir la variable, nos quedamos
+    # con los niveles menores al valor actual; si busca aumentarla, con los mayores).
+    palancas = {}
+    for nombre, (var, niveles, c) in PALANCAS.items():
+        actual_valor = actual[var]
+        if niveles[0] > niveles[-1]:
+            niveles_utiles = [n for n in niveles if n < actual_valor]
+        else:
+            niveles_utiles = [n for n in niveles if n > actual_valor]
+        if niveles_utiles:
+            palancas[nombre] = (var, niveles_utiles, c)
+
+    nivel  = {k: 0 for k in palancas}
     plan, costo = [], 0
 
     r = _brs_de_perfil(actual)
     r_inicial = r
 
     # El bucle esta acotado EXCLUSIVAMENTE por max_iteraciones, una constante fija
-    # derivada de PALANCAS (no de la request); las condiciones de parada dependientes
+    # derivada de palancas (no de la request); las condiciones de parada dependientes
     # de la request (objetivo_brs, costo_maximo) se evaluan como "break" dentro del
     # cuerpo, para que el limite del bucle en si no dependa de datos del usuario.
-    max_iteraciones = sum(len(niveles) for _, niveles, _ in PALANCAS.values())
+    max_iteraciones = sum(len(niveles) for _, niveles, _ in palancas.values())
 
     for _ in range(max_iteraciones):
         if r <= objetivo_brs or costo >= costo_maximo:
             break
         mejor = None  # (potencial_de_reduccion, nombre, var, niveles, costo)
-        for nombre, (var, niveles, c) in PALANCAS.items():
+        for nombre, (var, niveles, c) in palancas.items():
             if nivel[nombre] >= len(niveles):
                 continue
             # Potencial: cuanto bajaria el riesgo si esta palanca llegara a su meta final
@@ -659,7 +673,7 @@ def optimizar(
         nivel[nombre] += 1
         r = nr
 
-    original = perfil.dict()
+    original = perfil.model_dump()
     cambios = {
         k: {"antes": original[k], "despues": actual[k]}
         for k in original if original[k] != actual[k]
