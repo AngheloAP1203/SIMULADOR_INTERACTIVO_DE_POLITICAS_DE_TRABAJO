@@ -21,6 +21,10 @@
   .icon-fill{fill:currentColor; stroke:none}
   .icon-spin{animation:icon-spin 0.9s linear infinite}
   @keyframes icon-spin{ to{ transform:rotate(360deg); } }
+  .sr-only{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+    clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
   body{
     min-height:100vh; color:var(--text); padding:28px 20px 40px;
     background:radial-gradient(1200px 600px at 15% -5%, #2b3568 0%, transparent 55%),
@@ -271,7 +275,7 @@
       <h2><svg class="icon"><use href="#ico-settings"></use></svg> Perfil del desarrollador</h2>
       <div id="sliders"></div>
       <div class="slider-row">
-        <label><span><svg class="icon"><use href="#ico-message"></use></svg> Comentario del desarrollador (opcional)</span></label>
+        <label for="comentario"><span><svg class="icon"><use href="#ico-message"></use></svg> Comentario del desarrollador (opcional)</span></label>
         <textarea id="comentario" rows="2" placeholder="Ej: Esta semana me sentí agotado y sin motivación..."
           style="width:100%; resize:vertical; background:rgba(255,255,255,.05); color:inherit; border:1px solid rgba(255,255,255,.15); border-radius:8px; padding:8px; font-family:inherit;"></textarea>
       </div>
@@ -357,7 +361,8 @@
       manteniendo el resto del perfil fijo, y muestra cómo reacciona el modelo ya entrenado.
     </p>
     <div class="sens-controls">
-      <select id="sensVar"></select>
+      <label for="sensVar" class="sr-only">Variable a analizar</label>
+      <select id="sensVar" aria-label="Variable a analizar"></select>
       <button class="btn primary" style="flex:0 0 auto; min-width:160px" onclick="analizarSensibilidad()" id="btnSens"><svg class="icon"><use href="#ico-trend-down"></use></svg> Analizar variable</button>
     </div>
     <div class="chart-box hidden" id="sensChartBox"><canvas id="chartSens"></canvas></div>
@@ -370,10 +375,12 @@
       Sube un CSV con las 11 columnas del perfil (una fila por desarrollador) y el mismo modelo entrenado
       predice a todo el equipo de una vez.
     </p>
-    <div class="drop" onclick="document.getElementById('fileLote').click()">
+    <div class="drop" role="button" tabindex="0" aria-label="Seleccionar archivo CSV para predicción por lotes"
+      onclick="document.getElementById('fileLote').click()"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('fileLote').click();}">
       <svg class="icon"><use href="#ico-paperclip"></use></svg> Clic aquí para seleccionar un archivo CSV (o usa el botón de ejemplo)
     </div>
-    <input type="file" id="fileLote" accept=".csv" class="hidden" onchange="predecirLote()">
+    <input type="file" id="fileLote" accept=".csv" class="hidden" aria-label="Archivo CSV para predicción por lotes" onchange="predecirLote()">
     <div class="btns">
       <button class="btn ghost" onclick="descargarEjemploCSV()"><svg class="icon"><use href="#ico-download"></use></svg> Descargar CSV de ejemplo</button>
     </div>
@@ -388,10 +395,12 @@
       real (Low/Medium/High). El sistema evalúa el modelo YA entrenado contra esos datos reales — accuracy,
       F1, matriz de confusión y curvas ROC calculadas en vivo con <code>scikit-learn</code>, igual que en el notebook.
     </p>
-    <div class="drop" onclick="document.getElementById('fileEval').click()">
+    <div class="drop" role="button" tabindex="0" aria-label="Seleccionar archivo CSV con etiquetas reales para evaluación"
+      onclick="document.getElementById('fileEval').click()"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('fileEval').click();}">
       <svg class="icon"><use href="#ico-paperclip"></use></svg> Clic aquí para seleccionar un CSV con etiquetas reales
     </div>
-    <input type="file" id="fileEval" accept=".csv" class="hidden" onchange="evaluarModelo()">
+    <input type="file" id="fileEval" accept=".csv" class="hidden" aria-label="Archivo CSV con etiquetas reales" onchange="evaluarModelo()">
     <div class="btns">
       <button class="btn ghost" onclick="descargarEjemploEvaluacion()"><svg class="icon"><use href="#ico-download"></use></svg> Descargar muestra real de prueba (50 filas)</button>
     </div>
@@ -455,7 +464,7 @@ VARS.forEach(([id,label,min,max,val,step])=>{
 });
 
 function leerPerfil(){
-  const p={}; VARS.forEach(([id])=> p[id]=parseFloat(document.getElementById(id).value));
+  const p={}; VARS.forEach(([id])=> p[id]=Number.parseFloat(document.getElementById(id).value));
   const comentario=document.getElementById("comentario").value.trim();
   if(comentario) p.comentario=comentario;
   return p;
