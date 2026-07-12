@@ -5,7 +5,7 @@ Registro de pruebas **reales** (nada simulado) ejecutadas sobre el modelo entren
 
 ---
 
-## 1. Suite automatizada (pytest) — 17/17 pruebas superadas ✅
+## 1. Suite automatizada (pytest) — 22/22 pruebas superadas ✅
 
 Ejecutada contra la API real con `TestClient` (peticiones HTTP reales en memoria, modelo real cargado).
 
@@ -32,8 +32,14 @@ pytest tests/ -v
 | 15 | `test_segmento_coherente_con_riesgo` | K-Means asigna segmentos coherentes con el riesgo | ✅ |
 | 16 | `test_red_neuronal_coincide_en_perfiles_claros` | La red neuronal desplegada (2ª opinión) coincide con LightGBM en perfiles extremos | ✅ |
 | 17 | `test_explicacion_en_lenguaje_natural_refleja_la_prediccion` | La explicación cognitiva menciona el nivel y los factores SHAP reales | ✅ |
+| 18 | `test_cbi_items_expone_13_preguntas` | El test validado CBI expone sus 13 ítems reales + cita | ✅ |
+| 19 | `test_cbi_maximo_da_severo` | Respuestas máximas → burnout global 100, categoría severo | ✅ |
+| 20 | `test_cbi_minimo_sin_burnout` | Respuestas mínimas → burnout global 0, sin burnout | ✅ |
+| 21 | `test_cbi_item_energia_es_invertido` | El ítem invertido del CBI se puntúa correctamente al revés | ✅ |
+| 22 | `test_cbi_valida_respuestas_invalidas` | Rechaza valores y cantidades de respuestas inválidas | ✅ |
 
-Resultado: **17 passed in 33.37s** (con SHAP real activo).
+Resultado: **22 passed in 8.46s** (con SHAP real activo). Incluye el test clínico validado CBI
+(evaluación real de burnout, sin Machine Learning ni datos simulados).
 
 ### Doble modelo en producción (verificado)
 - Red neuronal MLP (64-32-16): **Accuracy 94.48 % / F1 0.944** en el mismo test held-out.

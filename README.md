@@ -14,14 +14,29 @@ API REST (FastAPI) con un **simulador What-If** web y explicaciones **SHAP** por
 
 | Archivo | Descripción |
 |---|---|
-| `burnout_model.pkl` | Modelo LightGBM entrenado + `StandardScaler` + `LabelEncoder` + orden de variables |
-| `nn_model.pkl` | Red neuronal MLP (64-32-16) entrenada sobre los mismos datos — segunda opinión en producción |
-| `tests/test_api.py` | Suite de 17 pruebas automatizadas (pytest) contra el modelo real |
-| `api_burnout.py` | API REST con FastAPI: `POST /predict`, `POST /predict/batch`, `POST /evaluate`, `POST /optimize`, `POST /sensitivity`, `GET /model/info`, `GET /model/importance` |
+| `burnout_model.pkl` | LightGBM + red neuronal MLP (64-32-16) + `StandardScaler` + `LabelEncoder` + auditorías, en un solo artefacto |
+| `tests/test_api.py` | Suite de 22 pruebas automatizadas (pytest) contra el modelo real y el test CBI |
+| `api_burnout.py` | API REST con FastAPI: `POST /cbi` (test validado), `POST /predict`, `POST /predict/batch`, `POST /evaluate`, `POST /optimize`, `POST /sensitivity`, `GET /model/info`, `GET /model/compare`, `GET /fairness` |
 | `static/index.html` | Frontend tipo dashboard: simulador What-If, comparador de escenarios, recomendaciones, comparación poblacional, segmentación K-Means, sensibilidad, predicción por lotes, evaluación con matriz de confusión/ROC y ficha técnica del modelo |
 | `df_burnout_procesado.csv` | Dataset real usado en el entrenamiento (7,000 registros), usado para percentiles y rangos de sensibilidad |
 | `requirements.txt` | Dependencias de Python |
 | `render.yaml` | Configuración del servicio web |
+
+## 🩺 Dos capas: evaluación REAL (CBI) + simulador predictivo (ML)
+
+El sistema combina, con total transparencia, dos componentes de distinta naturaleza:
+
+1. **Autoevaluación real con el Copenhagen Burnout Inventory (CBI)** — instrumento clínico **validado y de
+   dominio público** (Kristensen TS, Borritz M, Villadsen E, Christensen KB. *Work & Stress*.
+   2005;19(3):192-207). Su puntuación es una **fórmula publicada y determinística**: **no usa Machine Learning
+   ni datos sintéticos**. Una persona real responde 13 preguntas validadas y obtiene su nivel real de burnout
+   (endpoint `POST /cbi`). *Es la parte del sistema que sirve, hoy, a una persona real.*
+2. **Simulador predictivo (Machine Learning)** — el modelo LightGBM + red neuronal, entrenado con el dataset
+   *sintético* de Kaggle. Se declara honestamente como **prototipo** (pendiente de validación con datos reales)
+   y sirve para explorar **qué cambios de hábitos/trabajo reducirían el riesgo** (What-If, SHAP, optimizador).
+
+El CBI dice *dónde estás* (real y validado); el simulador explora *qué hacer* (predictivo). Esta separación
+explícita es una decisión de **transparencia y honestidad** deliberada.
 
 ## 🤖 Sobre el modelo
 
