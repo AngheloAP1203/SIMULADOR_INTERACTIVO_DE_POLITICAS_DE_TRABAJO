@@ -17,29 +17,12 @@ API REST (FastAPI) con un **simulador What-If** web y explicaciones **SHAP** por
 | `burnout_model.pkl` | LightGBM + red neuronal MLP (64-32-16, "segunda opinión") + `StandardScaler` + `LabelEncoder` + auditoría de equidad, en un solo artefacto |
 | `burnout_mlp.pkl` | Segundo modelo MLP independiente, generado por `train_mlp.py`, comparado en vivo en `/predict` y `/model/info` |
 | `train_mlp.py` | Script de entrenamiento del MLP independiente, reutiliza el scaler y feature_cols de `burnout_model.pkl` |
-| `tests/test_api.py` | Suite de pruebas automatizadas (pytest) contra el modelo real y el test CBI |
-| `api_burnout.py` | API REST con FastAPI: `POST /cbi` (test validado), `POST /predict`, `POST /predict/batch`, `POST /evaluate`, `POST /optimize`, `POST /sensitivity`, `GET /model/info`, `GET /model/compare`, `GET /fairness`, `GET /model/importance` |
-| `static/index.html` | Frontend tipo dashboard: simulador What-If, comparador de escenarios, recomendaciones, comparación poblacional, segmentación K-Means, sensibilidad, predicción por lotes, evaluación con matriz de confusión/ROC, ficha técnica del modelo, comentario opcional con análisis de sentimiento, y autoevaluación real con el CBI |
+| `tests/test_api.py` | Suite de pruebas automatizadas (pytest) contra el modelo real |
+| `api_burnout.py` | API REST con FastAPI: `POST /predict`, `POST /predict/batch`, `POST /evaluate`, `POST /optimize`, `POST /sensitivity`, `GET /model/info`, `GET /model/compare`, `GET /fairness`, `GET /model/importance` |
+| `static/index.html` | Frontend tipo dashboard: simulador What-If, comparador de escenarios, recomendaciones, comparación poblacional, segmentación K-Means, sensibilidad, predicción por lotes, evaluación con matriz de confusión/ROC, ficha técnica del modelo, y comentario opcional con análisis de sentimiento |
 | `df_burnout_procesado.csv` | Dataset real usado en el entrenamiento (7,000 registros), usado para percentiles y rangos de sensibilidad |
 | `requirements.txt` | Dependencias de Python |
 | `render.yaml` | Configuración del servicio web |
-
-## <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg> Dos capas: evaluación REAL (CBI) + simulador predictivo (ML)
-
-El sistema combina, con total transparencia, dos componentes de distinta naturaleza:
-
-1. **Autoevaluación real con el Copenhagen Burnout Inventory (CBI)** — instrumento clínico **validado y de
-   dominio público** (Kristensen TS, Borritz M, Villadsen E, Christensen KB. *Work & Stress*.
-   2005;19(3):192-207). Su puntuación es una **fórmula publicada y determinística**: **no usa Machine Learning
-   ni datos sintéticos**. Una persona real responde 13 preguntas validadas y obtiene su nivel real de burnout
-   (endpoint `POST /cbi`). *Es la parte del sistema que sirve, hoy, a una persona real.*
-2. **Simulador predictivo (Machine Learning)** — el modelo LightGBM + dos redes neuronales de comparación,
-   entrenado con el dataset *sintético* de Kaggle. Se declara honestamente como **prototipo** (pendiente de
-   validación con datos reales) y sirve para explorar **qué cambios de hábitos/trabajo reducirían el riesgo**
-   (What-If, SHAP, optimizador).
-
-El CBI dice *dónde estás* (real y validado); el simulador explora *qué hacer* (predictivo). Esta separación
-explícita es una decisión de **transparencia y honestidad** deliberada.
 
 ## <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"></path></svg> Sobre el modelo
 

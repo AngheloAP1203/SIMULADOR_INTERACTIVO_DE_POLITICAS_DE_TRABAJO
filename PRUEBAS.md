@@ -5,7 +5,7 @@ Registro de pruebas **reales** (nada simulado) ejecutadas sobre el modelo entren
 
 ---
 
-## 1. Suite automatizada (pytest) — 22/22 pruebas superadas <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+## 1. Suite automatizada (pytest) — 17/17 pruebas superadas <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
 
 Ejecutada contra la API real con `TestClient` (peticiones HTTP reales en memoria, modelo real cargado).
 
@@ -32,14 +32,8 @@ pytest tests/ -v
 | 15 | `test_segmento_coherente_con_riesgo` | K-Means asigna segmentos coherentes con el riesgo | <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> |
 | 16 | `test_red_neuronal_coincide_en_perfiles_claros` | La red neuronal desplegada (2ª opinión) coincide con LightGBM en perfiles extremos | <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> |
 | 17 | `test_explicacion_en_lenguaje_natural_refleja_la_prediccion` | La explicación cognitiva menciona el nivel y los factores SHAP reales | <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> |
-| 18 | `test_cbi_items_expone_13_preguntas` | El test validado CBI expone sus 13 ítems reales + cita | <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> |
-| 19 | `test_cbi_maximo_da_severo` | Respuestas máximas → burnout global 100, categoría severo | <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> |
-| 20 | `test_cbi_minimo_sin_burnout` | Respuestas mínimas → burnout global 0, sin burnout | <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> |
-| 21 | `test_cbi_item_energia_es_invertido` | El ítem invertido del CBI se puntúa correctamente al revés | <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> |
-| 22 | `test_cbi_valida_respuestas_invalidas` | Rechaza valores y cantidades de respuestas inválidas | <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> |
 
-Resultado: **22 passed in 8.46s** (con SHAP real activo). Incluye el test clínico validado CBI
-(evaluación real de burnout, sin Machine Learning ni datos simulados).
+Resultado: **17 passed in 8.46s** (con SHAP real activo).
 
 ### Doble modelo en producción (verificado)
 - Red neuronal MLP (64-32-16): **Accuracy 94.48 % / F1 0.944** en el mismo test held-out.

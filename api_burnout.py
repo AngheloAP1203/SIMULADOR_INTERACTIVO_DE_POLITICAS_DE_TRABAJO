@@ -145,62 +145,6 @@ PESO_ORDEN = np.array([SEVERIDAD[c] for c in label_encoder.classes_])
 
 DERIVADAS = ["work_life_ratio", "productivity_score", "meeting_fatigue", "recovery_index"]
 
-# ---------------------------------------------------------------------------
-# COPENHAGEN BURNOUT INVENTORY (CBI) - instrumento clinico VALIDADO y de dominio
-# publico (Kristensen, Borritz, Villadsen & Christensen, Work & Stress 2005;19(3):192-207;
-# gratuito para uso no comercial). Puntuacion DETERMINISTICA publicada, SIN Machine
-# Learning y SIN datos sinteticos: cada respuesta vale Siempre=100 / A menudo=75 /
-# A veces=50 / Rara vez=25 / Nunca=0; se promedia por subescala; >=50 indica burnout.
-# Usamos las subescalas Personal (6 items) y Laboral (7 items) = 13 items.
-# ---------------------------------------------------------------------------
-CBI_CITACION = ("Copenhagen Burnout Inventory (CBI) - Kristensen TS, Borritz M, Villadsen E, "
-                "Christensen KB. Work & Stress. 2005;19(3):192-207. Uso no comercial.")
-
-CBI_OPCIONES = [
-    {"texto": "Siempre",   "valor": 100},
-    {"texto": "A menudo",  "valor": 75},
-    {"texto": "A veces",   "valor": 50},
-    {"texto": "Rara vez",  "valor": 25},
-    {"texto": "Nunca / casi nunca", "valor": 0},
-]
-
-# (subescala, texto, invertido). El item de energia para familia/amigos se puntua invertido.
-CBI_ITEMS = [
-    ("personal", "¿Con qué frecuencia te sientes cansado/a?", False),
-    ("personal", "¿Con qué frecuencia estás físicamente agotado/a?", False),
-    ("personal", "¿Con qué frecuencia estás emocionalmente agotado/a?", False),
-    ("personal", "¿Con qué frecuencia piensas: 'ya no puedo más'?", False),
-    ("personal", "¿Con qué frecuencia te sientes desgastado/a?", False),
-    ("personal", "¿Con qué frecuencia te sientes débil y propenso/a a enfermar?", False),
-    ("laboral",  "¿Tu trabajo es emocionalmente agotador?", False),
-    ("laboral",  "¿Te sientes quemado/a (agotado/a) por tu trabajo?", False),
-    ("laboral",  "¿Tu trabajo te resulta frustrante?", False),
-    ("laboral",  "¿Te sientes agotado/a al final de la jornada laboral?", False),
-    ("laboral",  "¿Te sientes agotado/a por la mañana al pensar en otro día de trabajo?", False),
-    ("laboral",  "¿Sientes que cada hora de trabajo te resulta agotadora?", False),
-    ("laboral",  "¿Tienes energía suficiente para tu familia y amigos en tu tiempo libre?", True),
-]
-
-CBI_CORTES = [
-    (50,  "Sin burnout / bajo",  "Tu nivel de agotamiento está por debajo del umbral clínico. Mantén tus hábitos de descanso."),
-    (75,  "Burnout moderado",    "Hay señales de agotamiento. Conviene revisar carga de trabajo, sueño y descanso."),
-    (100, "Burnout alto",        "Nivel de agotamiento elevado. Se recomienda tomar medidas de bienestar y considerar apoyo profesional."),
-    (101, "Burnout severo",      "Nivel de agotamiento muy elevado. Es importante buscar apoyo y reducir la carga cuanto antes."),
-]
-
-
-class RespuestasCBI(BaseModel):
-    # 13 respuestas, cada una en {0,25,50,75,100}, en el orden de CBI_ITEMS
-    respuestas: list[int]
-
-
-def _categoria_cbi(score: float) -> tuple[str, str]:
-    for limite, nombre, interpretacion in CBI_CORTES:
-        if score < limite:
-            return nombre, interpretacion
-    return CBI_CORTES[-1][1], CBI_CORTES[-1][2]
-
-
 # Palancas del optimizador prescriptivo (mismas que el notebook):
 #   nombre -> (variable, niveles graduales hacia una meta saludable, costo por nivel)
 PALANCAS = {
@@ -722,54 +666,6 @@ def optimizar(
         "objetivo_alcanzado": r <= objetivo_brs,
         "plan": plan,
         "cambios_netos": cambios,
-    }
-
-
-@app.get("/cbi/items")
-def cbi_items():
-    """Devuelve las 13 preguntas del CBI y las opciones de respuesta (instrumento real)."""
-    preguntas = [
-        {"n": i + 1, "subescala": sub, "texto": txt, "invertido": inv}
-        for i, (sub, txt, inv) in enumerate(CBI_ITEMS)
-    ]
-    return {"instrumento": "Copenhagen Burnout Inventory (CBI)", "citacion": CBI_CITACION,
-            "opciones": CBI_OPCIONES, "n_items": len(CBI_ITEMS), "preguntas": preguntas}
-
-
-@app.post("/cbi")
-def evaluar_cbi(datos: RespuestasCBI):
-    """
-    Evaluacion REAL de burnout con el Copenhagen Burnout Inventory (instrumento clinico
-    validado). Puntuacion deterministica publicada, SIN Machine Learning ni datos sinteticos:
-    promedia las respuestas por subescala (aplicando el item invertido) y devuelve el nivel
-    real de burnout de la persona. Sirve a una persona real hoy.
-    """
-    r = datos.respuestas
-    if len(r) != len(CBI_ITEMS):
-        return {"error": f"Se esperaban {len(CBI_ITEMS)} respuestas, se recibieron {len(r)}."}
-    if any(v not in (0, 25, 50, 75, 100) for v in r):
-        return {"error": "Cada respuesta debe ser uno de: 0, 25, 50, 75, 100."}
-
-    personal, laboral = [], []
-    for valor, (sub, _txt, invertido) in zip(r, CBI_ITEMS):
-        puntos = (100 - valor) if invertido else valor   # item invertido
-        (personal if sub == "personal" else laboral).append(puntos)
-
-    score_personal = round(float(np.mean(personal)), 1)
-    score_laboral  = round(float(np.mean(laboral)), 1)
-    score_global   = round((score_personal + score_laboral) / 2, 1)
-    categoria, interpretacion = _categoria_cbi(score_global)
-
-    return {
-        "instrumento": "Copenhagen Burnout Inventory (CBI)",
-        "burnout_personal": score_personal,
-        "burnout_laboral": score_laboral,
-        "burnout_global": score_global,
-        "burnout_presente": score_global >= 50,      # umbral clinico publicado
-        "categoria": categoria,
-        "interpretacion": interpretacion,
-        "citacion": CBI_CITACION,
-        "aviso": "Herramienta de autoconocimiento y apoyo, no constituye un diagnóstico médico.",
     }
 
 

@@ -213,23 +213,6 @@
     border:1px solid rgba(255,255,255,.06); color:#fff;
   }
   table.cm td.axis{color:var(--muted); font-weight:600; font-size:.74rem; background:none; border:none}
-
-  /* ---------- cuestionario CBI ---------- */
-  .cbi-q{padding:12px 0; border-bottom:1px solid rgba(255,255,255,.06)}
-  .cbi-q .q-txt{font-size:.9rem; margin-bottom:9px}
-  .cbi-q .q-txt .num{color:var(--accent); font-weight:700; margin-right:6px}
-  .cbi-opts{display:flex; gap:6px; flex-wrap:wrap}
-  .cbi-opts label{
-    flex:1; min-width:88px; text-align:center; padding:8px 6px; border-radius:9px; cursor:pointer;
-    background:rgba(255,255,255,.04); border:1px solid var(--glass-border); font-size:.78rem;
-    color:var(--muted); transition:.15s; user-select:none;
-  }
-  .cbi-opts label:hover{border-color:var(--accent)}
-  .cbi-opts input{display:none}
-  .cbi-opts input:checked + span{color:#fff}
-  .cbi-opts label:has(input:checked){background:linear-gradient(135deg,var(--accent),var(--accent2)); border-color:transparent; color:#fff}
-  .cbi-sub{font-size:.72rem; color:var(--accent2); text-transform:uppercase; letter-spacing:1px; margin:14px 0 4px}
-  .cbi-score-big{font-size:2.6rem; font-weight:800; font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -267,41 +250,13 @@
   <symbol id="ico-radar" viewBox="0 0 24 24"><polygon points="12 3 21 9 18 20 6 20 3 9"></polygon><polygon points="12 8 16 11 14.5 16 9.5 16 8 11"></polygon></symbol>
   <symbol id="ico-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></symbol>
   <symbol id="ico-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></symbol>
-  <symbol id="ico-activity" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></symbol>
-  <symbol id="ico-shuffle" viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></symbol>
-  <symbol id="ico-arrow-down" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></symbol>
-  <symbol id="ico-arrow-right" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></symbol>
+  <symbol id="ico-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></symbol>
 </svg>
 <div class="wrap">
   <header>
     <h1><svg class="icon"><use href="#ico-brand"></use></svg> Simulador Interactivo de Políticas de Trabajo</h1>
     <p>Predicción del nivel de <b>burnout</b> en desarrolladores · LightGBM + SHAP · UPAO — Machine Learning 2026-10</p>
   </header>
-
-  <!-- ============ AUTOEVALUACIÓN REAL (CBI) ============ -->
-  <div class="card" id="cardCBI" style="margin-bottom:24px; border-color:rgba(46,204,113,.35)">
-    <h2><svg class="icon"><use href="#ico-activity"></use></svg> Autoevaluación de burnout — test clínico validado (CBI)</h2>
-    <p style="color:var(--muted); font-size:.85rem; margin-bottom:6px">
-      Responde con sinceridad pensando en <b>las últimas semanas</b>. Este test es el
-      <b>Copenhagen Burnout Inventory</b>, un instrumento científico real y validado — su resultado
-      <b>no usa Machine Learning ni datos simulados</b>, se calcula con la fórmula publicada del instrumento.
-    </p>
-    <p style="color:var(--muted); font-size:.75rem; margin-bottom:16px">
-      <svg class="icon"><use href="#ico-activity"></use></svg> Herramienta de autoconocimiento y apoyo, <b>no es un diagnóstico médico</b>.
-    </p>
-    <div id="cbiPreguntas" class="placeholder">Cargando cuestionario validado…</div>
-    <div class="btns">
-      <button class="btn primary" id="btnCBI" onclick="calcularCBI()"><svg class="icon"><use href="#ico-activity"></use></svg> Calcular mi nivel de burnout</button>
-      <button class="btn ghost" onclick="rellenarCBIDemo()"><svg class="icon"><use href="#ico-shuffle"></use></svg> Ejemplo (respuestas altas)</button>
-    </div>
-    <div id="cbiResultado"></div>
-  </div>
-
-  <!-- Separador honesto entre la parte REAL y el prototipo ML -->
-  <div style="text-align:center; color:var(--muted); font-size:.85rem; margin:6px 0 18px">
-    <svg class="icon"><use href="#ico-arrow-down"></use></svg> Abajo: <b>simulador predictivo</b> (prototipo de ML entrenado con datos sintéticos de comportamiento)
-    para explorar <b>qué cambios de hábitos reducirían el riesgo</b>.
-  </div>
 
   <!-- Perfiles rápidos -->
   <div class="presets">
@@ -334,8 +289,7 @@
           Ajusta el perfil (o usa un preset) y pulsa <b>Predecir burnout</b>.<br><br>
           El modelo LightGBM analizará las 11 variables + 4 derivadas y devolverá el nivel de riesgo,
           el índice continuo <b>BRS (0–100)</b> y la explicación <b>SHAP</b> de la predicción.<br><br>
-          <span style="font-size:.8rem">ℹ️ Prototipo entrenado con datos <b>sintéticos</b> de comportamiento;
-          complementa el test real de arriba explorando escenarios.</span>
+          <span style="font-size:.8rem"><svg class="icon"><use href="#ico-info"></use></svg> Prototipo entrenado con datos <b>sintéticos</b> de comportamiento.</span>
         </div>
       </div>
     </div>
@@ -1065,80 +1019,7 @@ async function cargarEquidad(){
   }
 }
 
-/* ============================== AUTOEVALUACIÓN CBI (REAL) ============================== */
-let cbiItems = [];
-const CBI_COLOR = {"Sin burnout / bajo":"#2ecc71","Burnout moderado":"#f5a623","Burnout alto":"#ff8c42","Burnout severo":"#ff5c5c"};
-
-async function cargarCBI(){
-  try{
-    const d = await fetch("/cbi/items").then(r=>r.json());
-    cbiItems = d.preguntas;
-    const opts = d.opciones;
-    let sub = "";
-    let html = "";
-    d.preguntas.forEach((q,i)=>{
-      if(q.subescala !== sub){
-        sub = q.subescala;
-        html += `<div class="cbi-sub">${sub === "personal" ? "Agotamiento personal" : "Agotamiento laboral"}</div>`;
-      }
-      html += `<div class="cbi-q"><div class="q-txt"><span class="num">${q.n}.</span>${q.texto}</div><div class="cbi-opts">`;
-      opts.forEach(o=>{
-        html += `<label><input type="radio" name="cbi_${i}" value="${o.valor}"><span>${o.texto}</span></label>`;
-      });
-      html += `</div></div>`;
-    });
-    html += `<p style="font-size:.72rem; color:var(--muted); margin-top:12px">${d.citacion}</p>`;
-    document.getElementById("cbiPreguntas").innerHTML = html;
-  }catch(e){
-    document.getElementById("cbiPreguntas").innerHTML = `<div class="placeholder">${ic("x-circle")} No se pudo cargar el cuestionario: ${e.message}</div>`;
-  }
-}
-
-function rellenarCBIDemo(){
-  cbiItems.forEach((q,i)=>{
-    // respuestas altas de agotamiento; el item invertido (energia) en bajo
-    const val = q.invertido ? 25 : 75;
-    const el = document.querySelector(`input[name="cbi_${i}"][value="${val}"]`);
-    if(el) el.checked = true;
-  });
-}
-
-async function calcularCBI(){
-  const respuestas = [];
-  for(let i=0;i<cbiItems.length;i++){
-    const sel = document.querySelector(`input[name="cbi_${i}"]:checked`);
-    if(!sel){ alert(`Responde la pregunta ${i+1} para continuar.`); return; }
-    respuestas.push(parseInt(sel.value));
-  }
-  const btn = document.getElementById("btnCBI");
-  btn.disabled = true; btn.innerHTML = `${ic("loader","icon-spin")} Calculando...`;
-  try{
-    const d = await fetch("/cbi",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({respuestas})}).then(r=>r.json());
-    if(d.error){ document.getElementById("cbiResultado").innerHTML = `<div class="placeholder">${ic("x-circle")} ${d.error}</div>`; return; }
-    const col = CBI_COLOR[d.categoria] || "#f5a623";
-    document.getElementById("cbiResultado").innerHTML = `
-      <div style="text-align:center; margin-top:18px; padding:18px; border-radius:14px; background:rgba(255,255,255,.04); border:1px solid var(--glass-border)">
-        <div class="cbi-score-big" style="color:${col}">${d.burnout_global}<span style="font-size:1rem; color:var(--muted)">/100</span></div>
-        <div style="font-size:1.15rem; font-weight:800; color:${col}; margin:4px 0 8px">${d.categoria}</div>
-        <p style="font-size:.86rem; color:#cdd6ee; max-width:520px; margin:0 auto 14px">${d.interpretacion}</p>
-        <div class="info-grid" style="max-width:420px; margin:0 auto">
-          <div class="info-chip"><div class="v">${d.burnout_personal}</div><div class="k">Agotamiento personal</div></div>
-          <div class="info-chip"><div class="v">${d.burnout_laboral}</div><div class="k">Agotamiento laboral</div></div>
-        </div>
-        <p style="font-size:.75rem; color:var(--muted); margin-top:14px">${d.aviso}</p>
-        <p style="font-size:.82rem; color:var(--accent); margin-top:10px">
-          ${ic("arrow-right")} ¿Quieres saber <b>qué cambiar</b> para reducirlo? Usa el simulador predictivo de abajo.</p>
-      </div>`;
-    document.getElementById("cbiResultado").scrollIntoView({behavior:"smooth", block:"nearest"});
-  }catch(e){
-    document.getElementById("cbiResultado").innerHTML = `<div class="placeholder">${ic("x-circle")} Error: ${e.message}</div>`;
-  }finally{
-    btn.disabled = false; btn.innerHTML = `${ic("activity")} Calcular mi nivel de burnout`;
-  }
-}
-
 /* ============================== INICIALIZACIÓN ============================== */
-cargarCBI();
 cargarFichaModelo();
 cargarEquidad();
 </script>
