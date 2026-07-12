@@ -292,6 +292,12 @@
     <div id="modeloInfo" class="placeholder">Cargando información del modelo…</div>
   </div>
 
+  <!-- Transparencia, doble modelo y equidad -->
+  <div class="card" style="margin-bottom:20px" id="cardEquidad">
+    <h2>⚖️ Transparencia y equidad (auditoría de sesgos)</h2>
+    <div id="equidadInfo" class="placeholder">Cargando auditoría de equidad…</div>
+  </div>
+
   <!-- Análisis de sensibilidad -->
   <div class="card" style="margin-bottom:20px">
     <h2>🎚️ Análisis de sensibilidad (curva de dependencia parcial)</h2>
@@ -910,8 +916,44 @@ function matrizConfusionHTML(cm, clases){
   return html;
 }
 
+/* ============================== TRANSPARENCIA Y EQUIDAD ============================== */
+async function cargarEquidad(){
+  try{
+    const [comp, fair] = await Promise.all([
+      fetch("/model/compare").then(r=>r.json()),
+      fetch("/fairness").then(r=>r.json()),
+    ]);
+    let html = "";
+    if(!comp.error){
+      html += `<p style="font-size:.85rem; color:#cdd6ee; margin-bottom:10px">🤝 <b>Doble modelo desplegado</b> (dos familias distintas — si coinciden, la predicción es más confiable):</p>
+        <div class="info-grid">
+          <div class="info-chip"><div class="v" style="color:var(--low)">${(comp.lightgbm.f1_macro).toFixed(3)}</div><div class="k">F1 LightGBM (boosting)</div></div>
+          <div class="info-chip"><div class="v" style="color:var(--accent)">${(comp.red_neuronal.f1_macro).toFixed(3)}</div><div class="k">F1 Red Neuronal (MLP)</div></div>
+          <div class="info-chip"><div class="v">${(comp.acuerdo*100).toFixed(1)}%</div><div class="k">Acuerdo entre modelos</div></div>
+        </div>`;
+    }
+    if(!fair.error){
+      const subs = fair.subgrupos;
+      html += `<p style="font-size:.85rem; color:#cdd6ee; margin:16px 0 10px">🎯 <b>Auditoría de equidad</b> — rendimiento por subgrupo demográfico (brecha máxima de F1: <b>${fair.brecha_max_f1}</b>, muy baja = sin sesgo relevante):</p>
+        <div class="tabla-scroll"><table class="lote">
+          <thead><tr><th>Subgrupo</th><th>N</th><th>Accuracy</th><th>F1-macro</th></tr></thead><tbody>
+          ${Object.entries(subs).map(([k,v])=>`<tr>
+            <td>${k.replace(/_/g," ")}</td><td>${v.n}</td><td>${(v.accuracy*100).toFixed(2)}%</td><td>${v.f1_macro}</td>
+          </tr>`).join("")}
+        </tbody></table></div>
+        <p style="font-size:.78rem; color:var(--muted); margin-top:10px">
+          Todas las variables se auditan con SHAP; se usa <code>class_weight='balanced'</code> para no penalizar
+          las clases minoritarias. El sistema es de uso <b>preventivo y no punitivo</b>.</p>`;
+    }
+    document.getElementById("equidadInfo").innerHTML = html || `<div class="placeholder">Auditoría no disponible en este despliegue.</div>`;
+  }catch(e){
+    document.getElementById("equidadInfo").innerHTML = `<div class="placeholder">❌ No se pudo cargar la auditoría: ${e.message}</div>`;
+  }
+}
+
 /* ============================== INICIALIZACIÓN ============================== */
 cargarFichaModelo();
+cargarEquidad();
 </script>
 </body>
 </html>

@@ -48,18 +48,15 @@ except Exception:
     explainer = None
     HAY_SHAP = False
 
-# Red neuronal de SEGUNDA OPINION (MLP entrenada sobre los mismos datos, exportada por el
-# notebook). Dos familias de modelos distintas (boosting de arboles vs red neuronal): si
-# coinciden, la prediccion es mas confiable; si discrepan, se marca para revision humana.
-try:
-    with open(os.path.join(RUTA_BASE, "nn_model.pkl"), "rb") as f:
-        _nn_art = pickle.load(f)
-    red_neuronal = _nn_art["model"]
-    NN_INFO = {k: v for k, v in _nn_art.items() if k != "model"}
-    HAY_NN = True
-except Exception:
-    red_neuronal, NN_INFO = None, {}
-    HAY_NN = False
+# Red neuronal de SEGUNDA OPINION (MLP 64-32-16 entrenada sobre los mismos datos, incluida
+# dentro de burnout_model.pkl). Dos familias de modelos distintas (boosting de arboles vs
+# red neuronal): si coinciden, la prediccion es mas confiable; si discrepan, se marca para
+# revision humana. Opcional: si el pkl no la trae, la API funciona solo con LightGBM.
+red_neuronal      = artefactos.get("nn_model")
+METRICAS_MODELOS  = artefactos.get("metricas_modelos", {})
+AUDITORIA_EQUIDAD = artefactos.get("auditoria_equidad")
+NN_INFO           = METRICAS_MODELOS.get("red_neuronal", {}) if METRICAS_MODELOS else {}
+HAY_NN            = red_neuronal is not None
 
 # Dataset REAL usado en el entrenamiento (7,000 registros). Se usa para calcular
 # percentiles poblacionales y rangos reales del analisis de sensibilidad.
@@ -456,6 +453,29 @@ def info_modelo():
         "segmentos": list(NOMBRES_SEGMENTO.values()) if HAY_KMEANS else [],
         "red_neuronal_segunda_opinion": {"disponible": HAY_NN, **NN_INFO},
     }
+
+
+@app.get("/model/compare")
+def comparar_modelos():
+    """
+    Comparacion de los dos modelos desplegados (transparencia): LightGBM (boosting de
+    arboles) vs Red Neuronal MLP, con su nivel de acuerdo en el conjunto de prueba.
+    """
+    if not METRICAS_MODELOS:
+        return {"error": "El modelo desplegado no incluye metricas comparativas de la red neuronal."}
+    return METRICAS_MODELOS
+
+
+@app.get("/fairness")
+def auditoria_equidad():
+    """
+    Auditoria de EQUIDAD / mitigacion de sesgos: rendimiento del modelo desglosado por
+    subgrupos demograficos (edad y experiencia). Una brecha pequena entre subgrupos indica
+    que el modelo no penaliza a ningun grupo. Calculado sobre el conjunto de prueba real.
+    """
+    if AUDITORIA_EQUIDAD is None:
+        return {"error": "El modelo desplegado no incluye la auditoria de equidad."}
+    return AUDITORIA_EQUIDAD
 
 
 @app.get("/model/importance")
