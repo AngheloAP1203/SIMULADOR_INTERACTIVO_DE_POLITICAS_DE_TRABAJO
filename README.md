@@ -30,6 +30,32 @@ API REST (FastAPI) con un **simulador What-If** web y explicaciones **SHAP** por
 - **Hiperparámetros:** optimizados con `RandomizedSearchCV` (validación cruzada estratificada k=5)
 - **Interpretabilidad:** SHAP (TreeExplainer) integrado en el endpoint
 
+## 🧪 Pruebas
+
+El proyecto incluye una **suite de 15 pruebas automatizadas** (`tests/test_api.py`, pytest) que
+ejecutan el modelo real y verifican predicciones, evaluación con datos etiquetados, optimizador,
+sensibilidad y segmentación. Resultados y evidencias del despliegue en producción: ver [PRUEBAS.md](PRUEBAS.md).
+
+```bash
+pytest tests/ -v    # 15 passed
+```
+
+## 📋 Evidencias verificables (mapeo de competencias)
+
+| Requisito | Evidencia en este proyecto |
+|---|---|
+| Preprocesamiento de datos | Imputación mediana/moda, winsorización, `StandardScaler` (notebook secc. 4; mismo pipeline en `api_burnout.py`) |
+| Selección de características | 11 originales + 4 derivadas justificadas; ranking de importancia nativa + SHAP (`GET /model/importance`) |
+| Redes neuronales | MLP con TensorFlow/Keras (3 capas, ReLU, dropout, early stopping) comparada contra 5 modelos más (notebook secc. 5) |
+| Entrenamiento + validación con métricas | `RandomizedSearchCV` + CV estratificada k=5; Accuracy 98.19 %, F1 0.982, AUC 0.9953 en test held-out; **IC 95 % por bootstrap (1,000 remuestreos)** |
+| Despliegue funcional | API FastAPI + dashboard en Render (este repo); endpoint `/evaluate` recalcula métricas en vivo con sklearn |
+| Evidencias verificables de funcionamiento | [PRUEBAS.md](PRUEBAS.md): 15/15 pruebas pytest + pruebas HTTP reales en producción |
+| Transparencia | SHAP (global + waterfall por predicción, expuesto en la API) + LIME (contraste), coeficientes de Regresión Logística |
+| Mitigación de sesgos | `class_weight='balanced'` en todos los modelos (desbalance 52/26/23); F1-macro como métrica (pondera igual las 3 clases); auditoría de variables sensibles con SHAP; matriz de confusión por clase sin degradar minorías |
+| Validación cruzada | Estratificada k=5 (F1 0.9845 ± 0.0034) + bootstrap para intervalos de confianza |
+| Optimización | Búsqueda de hiperparámetros (25 comb. × 5 pliegues) + early stopping |
+| Impacto social | Análisis poblacional con ROI estimado (~$4.1M/año bajo supuestos declarados); optimizador prescriptivo de políticas de bienestar; uso preventivo y no punitivo (secc. 11 del notebook) |
+
 ## ⚖️ Uso responsable
 
 Las predicciones de este sistema están orientadas a la **prevención y el bienestar**
