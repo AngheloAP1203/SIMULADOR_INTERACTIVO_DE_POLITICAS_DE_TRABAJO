@@ -623,14 +623,15 @@ def optimizar(
     r = _brs_de_perfil(actual)
     r_inicial = r
 
-    # Tope de iteraciones fijo (no depende de parametros de la request): a lo sumo
-    # se puede subir un nivel por cada palanca en cada vuelta, y cada palanca tiene
-    # como maximo 6 niveles, asi que el bucle jamas necesita mas vueltas que esto.
+    # El bucle esta acotado EXCLUSIVAMENTE por max_iteraciones, una constante fija
+    # derivada de PALANCAS (no de la request); las condiciones de parada dependientes
+    # de la request (objetivo_brs, costo_maximo) se evaluan como "break" dentro del
+    # cuerpo, para que el limite del bucle en si no dependa de datos del usuario.
     max_iteraciones = sum(len(niveles) for _, niveles, _ in PALANCAS.values())
-    iteracion = 0
 
-    while r > objetivo_brs and costo < costo_maximo and iteracion < max_iteraciones:
-        iteracion += 1
+    for _ in range(max_iteraciones):
+        if r <= objetivo_brs or costo >= costo_maximo:
+            break
         mejor = None  # (potencial_de_reduccion, nombre, var, niveles, costo)
         for nombre, (var, niveles, c) in PALANCAS.items():
             if nivel[nombre] >= len(niveles):

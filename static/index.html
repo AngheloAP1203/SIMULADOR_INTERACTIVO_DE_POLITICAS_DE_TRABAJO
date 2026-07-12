@@ -175,6 +175,7 @@
 
   /* ---------- lote CSV ---------- */
   .drop{
+    display:block; width:100%; background:none; font-family:inherit;
     border:1.5px dashed var(--glass-border); border-radius:12px; padding:20px; text-align:center;
     color:var(--muted); font-size:.85rem; margin-bottom:12px; cursor:pointer; transition:.2s;
   }
@@ -375,11 +376,9 @@
       Sube un CSV con las 11 columnas del perfil (una fila por desarrollador) y el mismo modelo entrenado
       predice a todo el equipo de una vez.
     </p>
-    <div class="drop" role="button" tabindex="0" aria-label="Seleccionar archivo CSV para predicción por lotes"
-      onclick="document.getElementById('fileLote').click()"
-      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('fileLote').click();}">
+    <button type="button" class="drop" onclick="document.getElementById('fileLote').click()">
       <svg class="icon"><use href="#ico-paperclip"></use></svg> Clic aquí para seleccionar un archivo CSV (o usa el botón de ejemplo)
-    </div>
+    </button>
     <input type="file" id="fileLote" accept=".csv" class="hidden" aria-label="Archivo CSV para predicción por lotes" onchange="predecirLote()">
     <div class="btns">
       <button class="btn ghost" onclick="descargarEjemploCSV()"><svg class="icon"><use href="#ico-download"></use></svg> Descargar CSV de ejemplo</button>
@@ -395,11 +394,9 @@
       real (Low/Medium/High). El sistema evalúa el modelo YA entrenado contra esos datos reales — accuracy,
       F1, matriz de confusión y curvas ROC calculadas en vivo con <code>scikit-learn</code>, igual que en el notebook.
     </p>
-    <div class="drop" role="button" tabindex="0" aria-label="Seleccionar archivo CSV con etiquetas reales para evaluación"
-      onclick="document.getElementById('fileEval').click()"
-      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('fileEval').click();}">
+    <button type="button" class="drop" onclick="document.getElementById('fileEval').click()">
       <svg class="icon"><use href="#ico-paperclip"></use></svg> Clic aquí para seleccionar un CSV con etiquetas reales
-    </div>
+    </button>
     <input type="file" id="fileEval" accept=".csv" class="hidden" aria-label="Archivo CSV con etiquetas reales" onchange="evaluarModelo()">
     <div class="btns">
       <button class="btn ghost" onclick="descargarEjemploEvaluacion()"><svg class="icon"><use href="#ico-download"></use></svg> Descargar muestra real de prueba (50 filas)</button>
